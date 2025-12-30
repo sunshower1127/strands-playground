@@ -1,9 +1,15 @@
 """OpenSearch 클라이언트 모듈"""
 
 import os
+import warnings
 
+import urllib3
 from dotenv import load_dotenv
 from opensearchpy import OpenSearch, RequestsHttpConnection
+
+# SSL 경고 숨기기 (터널 환경에서 정상)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+warnings.filterwarnings("ignore", message=".*verify_certs=False.*")
 
 
 class OpenSearchClient:
