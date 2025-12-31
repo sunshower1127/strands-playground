@@ -41,14 +41,14 @@ class OpenSearchClient:
 
     def list_indices(self) -> list[dict]:
         """인덱스 목록 반환"""
-        return self.client.cat.indices(format="json")
+        return self.client.cat.indices(format="json")  # type: ignore[call-arg]
 
     def search(self, index: str, query: dict, size: int = 5) -> list[dict]:
         """검색 수행"""
         response = self.client.search(
             index=index,
             body=query,
-            size=size,
+            size=size,  # type: ignore[call-arg]
         )
         return response["hits"]["hits"]
 
@@ -57,7 +57,7 @@ class OpenSearchClient:
         response = self.client.search(
             index=index,
             body={"query": {"match_all": {}}},
-            size=size,
+            size=size,  # type: ignore[call-arg]
         )
         return response["hits"]["hits"]
 
@@ -79,7 +79,7 @@ class OpenSearchClient:
     def get_docs_by_project(self, index: str, project_id: int, size: int = 100) -> list[dict]:
         """project_id로 문서 조회"""
         query = {"query": {"term": {"project_id": project_id}}}
-        response = self.client.search(index=index, body=query, size=size)
+        response = self.client.search(index=index, body=query, size=size)  # type: ignore[call-arg]
         return response["hits"]["hits"]
 
     def get_all_docs_by_project(self, index: str, project_id: int) -> list[dict]:
@@ -88,14 +88,14 @@ class OpenSearchClient:
         docs = []
 
         # 첫 번째 요청
-        response = self.client.search(index=index, body=query, size=100, scroll="2m")
+        response = self.client.search(index=index, body=query, size=100, scroll="2m")  # type: ignore[call-arg]
         scroll_id = response["_scroll_id"]
         hits = response["hits"]["hits"]
         docs.extend(hits)
 
         # scroll로 나머지 가져오기
         while hits:
-            response = self.client.scroll(scroll_id=scroll_id, scroll="2m")
+            response = self.client.scroll(scroll_id=scroll_id, scroll="2m")  # type: ignore[call-arg]
             scroll_id = response["_scroll_id"]
             hits = response["hits"]["hits"]
             docs.extend(hits)
