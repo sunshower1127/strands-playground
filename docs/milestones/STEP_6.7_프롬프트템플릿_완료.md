@@ -1,6 +1,6 @@
 # STEP CG: 프롬프트 템플릿 (PromptTemplate)
 
-## 상태: 계획
+## 상태: 완료 ✅
 
 ## 목표
 컨텍스트 + 질문 + 언어 설정 → LLM 프롬프트 생성
@@ -104,7 +104,7 @@ class StrictPromptTemplate:
 1. Answer based ONLY on the provided documents.
 2. NEVER use prior knowledge or make assumptions.
 3. If information is not found, say: "해당 정보를 제공된 문서에서 찾을 수 없습니다."
-4. Always cite sources in [문서명] or [문서명, p.N] format.
+4. Always cite sources using the document numbers or names provided (e.g., [1] or [문서명]).
 
 ## Prohibited
 - Supplementing answers with general knowledge
@@ -121,7 +121,7 @@ You MUST respond in {response_language}. This is mandatory.
 ## 질문
 {question}
 
-위 문서를 기반으로 답변하세요. 각 정보의 출처를 [문서명] 형식으로 명시하세요.
+위 문서를 기반으로 답변하세요. 각 정보의 출처를 문서 번호나 이름으로 명시하세요.
 문서에서 답을 찾을 수 없으면 솔직히 말씀해주세요.
 """
 
@@ -207,11 +207,44 @@ LLM이 영어로 응답하는 문제 해결:
 ---
 
 ## 할 일
-- [ ] Protocol 정의 (response_language 파라미터 포함)
-- [ ] SimplePromptTemplate 구현
-- [ ] StrictPromptTemplate 구현
-- [ ] 응답 언어 제어 테스트
+- [x] Protocol 정의 (response_language 파라미터 포함)
+- [x] SimplePromptTemplate 구현
+- [x] StrictPromptTemplate 구현
+- [x] 응답 언어 제어 테스트
 - [ ] 실제 LLM 호출로 응답 품질 비교
+
+---
+
+## 변경 사항
+
+### 구현 시 조정된 부분
+
+**출처 인용 형식 (ContextBuilder 연동)**
+
+계획에서는 `[문서명]` 또는 `[문서명, p.N]` 형식을 직접 지정했으나,
+ContextBuilder가 이미 `[번호] (파일명, p.페이지)` 형식으로 출력하므로
+해당 형식을 그대로 인용하도록 변경:
+
+```python
+# 변경 전
+"Always cite sources in [문서명] or [문서명, p.N] format."
+
+# 변경 후
+"Always cite sources using the document numbers or names provided (e.g., [1] or [문서명])."
+```
+
+User Prompt도 동일하게 조정:
+```python
+# 변경 전
+"각 정보의 출처를 [문서명] 형식으로 명시하세요."
+
+# 변경 후
+"각 정보의 출처를 문서 번호나 이름으로 명시하세요."
+```
+
+### 테스트 결과
+- 38개 테스트 전체 통과
+- 다국어 지원 테스트 (Korean, English, Japanese, Chinese, Spanish)
 
 ---
 

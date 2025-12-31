@@ -1,6 +1,7 @@
 """RAG 파이프라인 컴포넌트"""
 
 from .context_builder import ContextBuilder, RankedContextBuilder, SimpleContextBuilder
+from .prompt_template import PromptTemplate, SimplePromptTemplate, StrictPromptTemplate
 from .preprocessor import (
     KoreanPreprocessor,
     MinimalPreprocessor,
@@ -45,4 +46,8 @@ __all__ = [
     "ContextBuilder",
     "SimpleContextBuilder",
     "RankedContextBuilder",
+    # PromptTemplate
+    "PromptTemplate",
+    "SimplePromptTemplate",
+    "StrictPromptTemplate",
 ]
