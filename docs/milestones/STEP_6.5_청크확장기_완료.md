@@ -1,8 +1,9 @@
 # STEP CEA: 청크 확장기 (ChunkExpander)
 
-## 상태: 계획
+## 상태: 완료
 
 ## 목표
+
 검색 결과의 이웃 청크를 확장하여 컨텍스트 완전성 확보
 
 ---
@@ -10,6 +11,7 @@
 ## 배경
 
 ### 문제 상황
+
 ```
 검색 결과: "연차는 15일입니다."  ← 이것만으로는 맥락 부족
 
@@ -20,6 +22,7 @@
 ```
 
 ### 해결 방법
+
 ```
 검색된 청크 ± N개 이웃 청크 포함 → 완전한 맥락 제공
 ```
@@ -44,10 +47,10 @@
 
 ### 왜 CE 뒤에 배치?
 
-| 위치 | 이웃 조회 대상 | 비용 |
-|------|---------------|------|
-| CE 전 | 검색 결과 전체 (20개) | 높음 |
-| **CE 후** | **Top-K만 (5개)** | **낮음** |
+| 위치      | 이웃 조회 대상        | 비용     |
+| --------- | --------------------- | -------- |
+| CE 전     | 검색 결과 전체 (20개) | 높음     |
+| **CE 후** | **Top-K만 (5개)**     | **낮음** |
 
 → Top-K만 확장하면 효율적 + 이웃은 대부분 관련 있어서 별도 검증 불필요
 
@@ -56,12 +59,14 @@
 ## 기존 프로젝트 로직 분석
 
 ### 설정값
+
 ```python
 MAX_EXPANDED_RESULTS = 80  # 최대 반환 결과 수
 NEIGHBOR_WINDOW = 5        # 이웃 청크 확장 범위 (앞뒤 5개씩)
 ```
 
 ### 기존 방식의 문제점
+
 ```python
 # 검색 결과마다 개별 쿼리 (N+1 문제)
 for result in search_results:
@@ -74,6 +79,7 @@ for result in search_results:
 ## 구현할 클래스
 
 ### Protocol 정의
+
 ```python
 class ChunkExpander(Protocol):
     def expand(self, results: list[dict]) -> list[dict]:
@@ -90,6 +96,7 @@ class ChunkExpander(Protocol):
 ```
 
 ### 1. NoopChunkExpander (베이스라인)
+
 ```python
 class NoopChunkExpander:
     """확장 안 함 - 원본 그대로 반환"""
@@ -99,6 +106,7 @@ class NoopChunkExpander:
 ```
 
 ### 2. NeighborChunkExpander (권장 - 배치 조회)
+
 ```python
 class NeighborChunkExpander:
     """이웃 청크 배치 조회로 확장"""
@@ -206,18 +214,21 @@ class NeighborChunkExpander:
 ## 배치 조회 vs 개별 조회
 
 ### 기존 (개별 조회)
+
 ```
 검색 1회 + 이웃 조회 N회 = N+1 쿼리
 예: 검색 결과 10개 → 11회 쿼리
 ```
 
 ### 개선 (배치 조회)
+
 ```
 검색 1회 + 이웃 조회 1회 = 2 쿼리
 예: 검색 결과 10개 → 2회 쿼리
 ```
 
 ### 배치 쿼리 구조
+
 ```json
 {
   "query": {
@@ -226,16 +237,16 @@ class NeighborChunkExpander:
         {
           "bool": {
             "filter": [
-              {"term": {"document_id": 123}},
-              {"range": {"chunk_index": {"gte": 5, "lte": 15}}}
+              { "term": { "document_id": 123 } },
+              { "range": { "chunk_index": { "gte": 5, "lte": 15 } } }
             ]
           }
         },
         {
           "bool": {
             "filter": [
-              {"term": {"document_id": 456}},
-              {"range": {"chunk_index": {"gte": 10, "lte": 20}}}
+              { "term": { "document_id": 456 } },
+              { "range": { "chunk_index": { "gte": 10, "lte": 20 } } }
             ]
           }
         }
@@ -250,12 +261,13 @@ class NeighborChunkExpander:
 
 ## 설정 파라미터
 
-| 파라미터 | 기본값 | 설명 |
-|---------|--------|------|
-| `window` | 5 | 앞뒤 N개 청크 확장 |
-| `max_results` | 80 | 최대 반환 결과 수 |
+| 파라미터      | 기본값 | 설명               |
+| ------------- | ------ | ------------------ |
+| `window`      | 5      | 앞뒤 N개 청크 확장 |
+| `max_results` | 80     | 최대 반환 결과 수  |
 
 ### window 값 선택 가이드
+
 - **3**: 짧은 문서, 빠른 응답 필요시
 - **5**: 일반적인 경우 (권장)
 - **10**: 긴 문서, 풍부한 맥락 필요시
@@ -320,6 +332,7 @@ class RankedContextBuilder:
 ## 테스트 케이스
 
 ### 1. 이웃 확장 기본
+
 ```python
 expander = NeighborChunkExpander(client, "rag-index", window=2)
 
@@ -334,6 +347,7 @@ assert any(r["_source"]["chunk_index"] == 3 for r in expanded)
 ```
 
 ### 2. 중복 제거
+
 ```python
 # 두 검색 결과가 같은 이웃을 공유할 때
 results = [
@@ -347,6 +361,7 @@ assert chunk_6_count == 1
 ```
 
 ### 3. 다른 문서 이웃 분리
+
 ```python
 results = [
     {"_id": "c1", "_source": {"document_id": 1, "chunk_index": 5}},
@@ -356,6 +371,7 @@ results = [
 ```
 
 ### 4. 빈 결과
+
 ```python
 expanded = expander.expand([])
 assert expanded == []
@@ -364,12 +380,14 @@ assert expanded == []
 ---
 
 ## 파일
+
 - `src/rag/chunk_expander.py`
 - `tests/test_chunk_expander.py`
 
 ---
 
 ## 할 일
+
 - [ ] Protocol 정의
 - [ ] NoopChunkExpander 구현
 - [ ] NeighborChunkExpander 구현 (배치 조회)
@@ -380,6 +398,7 @@ assert expanded == []
 ---
 
 ## 참고 자료
+
 - [Elasticsearch - Fetch Surrounding Chunks](https://www.elastic.co/search-labs/blog/advanced-chunking-fetch-surrounding-chunks)
 - [GraphRAG - Parent-Child Retriever](https://graphrag.com/reference/graphrag/parent-child-retriever/)
 - [LanceDB - Parent Document Retriever](https://blog.lancedb.com/modified-rag-parent-document-bigger-chunk-retriever-62b3d1e79bc6)

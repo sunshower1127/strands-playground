@@ -1,5 +1,6 @@
 """RAG 파이프라인 컴포넌트"""
 
+from .context_builder import ContextBuilder, RankedContextBuilder, SimpleContextBuilder
 from .preprocessor import (
     KoreanPreprocessor,
     MinimalPreprocessor,
@@ -40,4 +41,8 @@ __all__ = [
     "AdaptiveThresholdFilter",
     "RerankerFilter",
     "CompositeFilter",
+    # ContextBuilder
+    "ContextBuilder",
+    "SimpleContextBuilder",
+    "RankedContextBuilder",
 ]
