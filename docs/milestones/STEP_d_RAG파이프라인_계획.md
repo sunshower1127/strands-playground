@@ -3,31 +3,16 @@
 ## 상태: 계획
 
 ## 할 일
-- [ ] LLM 클라이언트 구현 (LiteLLM + Vertex AI Claude)
 - [ ] 기본 RAG 파이프라인 클래스 구현
 - [ ] 테스트 실행 스크립트 작성
 - [ ] 결과 파일 포맷 정의
 - [ ] 전체 질문셋 실행 및 결과 저장
 
+> **의존성**: STEP CA (LLM 클라이언트) 완료 필요
+
 ---
 
-## 1. LLM 호출 로직
-
-```python
-# src/llm_client.py
-from litellm import completion
-
-def call_llm(prompt: str, context: str) -> str:
-    response = completion(
-        model="vertex_ai/claude-3-sonnet",
-        messages=[{"role": "user", "content": f"{context}\n\n{prompt}"}],
-        vertex_project=os.getenv("VERTEX_PROJECT"),
-        vertex_location=os.getenv("VERTEX_LOCATION"),
-    )
-    return response.choices[0].message.content
-```
-
-## 2. 기본 RAG 파이프라인
+## 1. 기본 RAG 파이프라인
 
 ```python
 # src/rag/basic.py

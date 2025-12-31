@@ -1,7 +1,5 @@
 """OpenSearch 클라이언트 테스트"""
 
-import pytest
-
 
 class TestOpenSearchConnection:
     """연결 테스트"""
