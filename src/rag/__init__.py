@@ -6,6 +6,7 @@ from .preprocessor import (
     NoopPreprocessor,
     Preprocessor,
 )
+from .query_builder import HybridQueryBuilder, KNNQueryBuilder, QueryBuilder
 from .query_enhancer import LLMQueryEnhancer, NoopQueryEnhancer, QueryEnhancer
 
 __all__ = [
@@ -18,4 +19,8 @@ __all__ = [
     "QueryEnhancer",
     "NoopQueryEnhancer",
     "LLMQueryEnhancer",
+    # QueryBuilder
+    "QueryBuilder",
+    "KNNQueryBuilder",
+    "HybridQueryBuilder",
 ]

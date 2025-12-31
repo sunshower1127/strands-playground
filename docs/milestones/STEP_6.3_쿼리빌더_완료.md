@@ -1,6 +1,6 @@
 # STEP CD: 쿼리 빌더 (QueryBuilder)
 
-## 상태: 계획
+## 상태: 완료
 
 ## 목표
 전처리된 질문 + 임베딩 → OpenSearch 쿼리 생성
@@ -245,8 +245,170 @@ RRF 점수는 0.01~0.05 범위가 정상 (순위 기반 공식).
 
 ---
 
+## 튜닝 옵션 레퍼런스 (기존 프로젝트 분석)
+
+### 1. 검색 필드 (multi_match)
+
+```python
+"fields": [
+    "chunk_text^4.0",  # 기본 분석기 (가장 넓은 매칭)
+    "text.ko^3.5",     # 한국어 nori 분석기
+    "text.en^1.8"      # 영어 분석기
+]
+```
+
+| 옵션 | 의미 | 필요? |
+|------|------|-------|
+| `chunk_text^4.0` | 기본 분석기로 검색, 가중치 4배 | ✅ 필요 |
+| `text.ko^3.5` | nori 분석기로 한국어 검색 | ✅ 필요 |
+| `text.en^1.8` | 영어 분석기로 검색 | ⚠️ 영어 문서 있으면 |
+
+---
+
+### 2. multi_match 타입 옵션
+
+```python
+"type": "cross_fields",
+"operator": "OR",
+"minimum_should_match": str(msm)  # 동적 계산
+```
+
+| 옵션 | 의미 | 필요? |
+|------|------|-------|
+| `type: cross_fields` | 여러 필드를 하나처럼 취급 | ⚠️ 검토 필요 |
+| `type: best_fields` | 가장 높은 점수 필드 사용 (기본값) | ✅ 단순 |
+| `operator: OR` | 단어 중 하나만 매칭해도 됨 | ✅ 기본값 |
+| `minimum_should_match` | 최소 N개 단어는 매칭해야 함 | ⚠️ 짧은 쿼리 대응용 |
+
+**MSM 동적 계산 (기존 프로젝트):**
+```python
+n = len(tokens)
+if n <= 2: msm = 1
+elif n <= 4: msm = 2
+else: msm = max(1, int(n * 0.6))
+```
+
+---
+
+### 3. function_score (최신성 보너스)
+
+```python
+"function_score": {
+    "query": { ... },
+    "functions": [{
+        "gauss": {
+            "metadata.last_modified_at": {
+                "origin": "now",
+                "scale": "180d",   # 6개월 기준
+                "decay": 0.8,     # 감쇠율
+                "offset": "7d"    # 7일 이내는 최대 점수
+            }
+        },
+        "weight": 0.25  # 전체 점수의 25%만 영향
+    }],
+    "score_mode": "multiply",
+    "boost_mode": "multiply"
+}
+```
+
+| 옵션 | 의미 | 필요? |
+|------|------|-------|
+| `gauss decay` | 최근 문서에 점수 보너스 | ❌ 복잡, 나중에 |
+| `scale: 180d` | 6개월 기준으로 감쇠 | - |
+| `weight: 0.25` | 최신성이 25%만 영향 | - |
+
+---
+
+### 4. bigram phrase 부스트
+
+```python
+# 연속 단어 매칭 시 부스트
+bigrams = ["연차 휴가", "휴가 정책"]
+for phrase in bigrams:
+    "match_phrase": {"text.ko": {"query": phrase, "slop": 1, "boost": 3.5}}
+    "match_phrase": {"title.ko": {"query": phrase, "slop": 1, "boost": 2.8}}
+```
+
+| 옵션 | 의미 | 필요? |
+|------|------|-------|
+| `match_phrase` | 연속 단어 매칭 시 부스트 | ❌ 효과 불확실 |
+| `slop: 1` | 단어 사이 1개 갭 허용 | - |
+| `boost: 3.5` | 매칭 시 3.5배 부스트 | - |
+
+---
+
+### 5. 파일명 검색
+
+```python
+# 파일명에 키워드 포함 시 부스트
+"wildcard": {"file_name": {"value": "*휴가*", "boost": 1.2}}
+"prefix": {"file_name": {"value": "휴가", "boost": 1.5}}
+```
+
+| 옵션 | 의미 | 필요? |
+|------|------|-------|
+| `wildcard` | 파일명에 키워드 포함 | ❌ 비용 큼 |
+| `prefix` | 파일명이 키워드로 시작 | ❌ 나중에 |
+
+---
+
+### 6. KNN 옵션
+
+```python
+"knn": {
+    "embedding": {
+        "vector": embedding,
+        "k": 100,      # RRF용 후보 개수
+        "boost": 0.7   # 텍스트 대비 벡터 가중치
+    }
+}
+```
+
+| 옵션 | 의미 | 필요? |
+|------|------|-------|
+| `k: 100` | RRF용 후보 100개 | ✅ 권장 |
+| `boost: 0.7` | 벡터 점수 0.7배 | ⚠️ 튜닝 대상 |
+
+---
+
+### 7. 기타 옵션
+
+```python
+# RRF 후보 확대 (OpenSearch 2.19+)
+"pagination_depth": max(100, top_k * 4)
+
+# 응답에서 벡터 제외 (성능)
+"_source": {"excludes": ["embedding", "embedding_vector"]}
+```
+
+| 옵션 | 의미 | 필요? |
+|------|------|-------|
+| `pagination_depth` | RRF 후보 확대 | ⚠️ 버전 확인 |
+| `excludes embedding` | 응답 크기 줄임 | ✅ 권장 |
+
+---
+
+### 구현 우선순위
+
+**1단계 (필수):**
+- `multi_match` with `chunk_text`, `text.ko`, `text.en`
+- `knn` with filter
+- `search_pipeline: hybrid-rrf`
+
+**2단계 (튜닝):**
+- 필드 `boost` 값 조정
+- `knn boost` 조정
+- `minimum_should_match` 추가
+
+**3단계 (고급):**
+- 최신성 보너스 (`function_score`)
+- bigram phrase 부스트
+- 파일명 검색
+
+---
+
 ## 할 일
-- [ ] Protocol 정의
-- [ ] KNNQueryBuilder 구현
-- [ ] HybridQueryBuilder 구현
-- [ ] 테스트 작성
+- [x] Protocol 정의
+- [x] KNNQueryBuilder 구현
+- [x] HybridQueryBuilder 구현
+- [x] 테스트 작성
