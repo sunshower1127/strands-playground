@@ -299,6 +299,36 @@ result = enhancer.enhance("연차 휴가는 며칠이야?", history=history)
 - [CHIQ: Contextual History Enhancement](https://arxiv.org/html/2406.05013v1)
 - [Query Rewriting in RAG Applications](https://shekhargulati.com/2024/07/17/query-rewriting-in-rag-applications/)
 
+### v5 Query Decomposition (질문 분해)
+
+복잡한 질문을 단순한 하위 질문들로 분해 후 각각 검색.
+
+```
+원본 질문: "A사와 B사의 연차 정책 차이점은?"
+      ↓ 분해
+["A사의 연차 정책은?", "B사의 연차 정책은?"]
+      ↓ 각각 검색
+[A사 문서들, B사 문서들]
+      ↓ 통합 + Rerank
+최종 컨텍스트
+```
+
+**2025 연구 결과:**
+
+| 프레임워크 | 성능 향상 | 특징 |
+|-----------|----------|------|
+| [Question Decomposition RAG](https://aclanthology.org/2025.acl-srw.32.pdf) | MRR@10 +36.7%, F1 +11.6% | 분해 → 검색 → Rerank |
+| [HopRAG](https://arxiv.org/html/2502.12442v1) | 답변 정확도 +76.78% | 그래프 기반 다단계 추론 |
+
+**도입 시점:**
+- 비교 질문이 많을 때 ("A와 B의 차이", "X vs Y")
+- 다단계 추론이 필요한 질문
+- 단일 검색으로 답변 품질이 낮을 때
+
+**참고:**
+- [Haystack - Query Decomposition Cookbook](https://haystack.deepset.ai/cookbook/query_decomposition)
+- [MultiHop-RAG Benchmark](https://openreview.net/forum?id=t4eB3zYWBK)
+
 ---
 
 ## 참고: HyDE와의 관계

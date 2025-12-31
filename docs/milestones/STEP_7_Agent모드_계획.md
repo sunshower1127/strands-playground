@@ -158,3 +158,69 @@ class RAGService:
 | search_queries | 실제 검색 쿼리들 |
 | retry_count | 재검색 횟수 |
 | trajectory | 실행 경로 |
+
+---
+
+## 8. 향후 개선: Context Awareness Gate (CAG)
+
+### 개요
+"이 질문에 외부 컨텍스트가 필요한가?"를 먼저 판단.
+
+```
+질문 ──► CAG 판단 ──┬── 필요함 ──► RAG 파이프라인 ──► 답변
+                   │
+                   └── 불필요 ──► LLM 직접 답변
+```
+
+### 장점
+- LLM 기본 지식으로 충분한 질문은 검색 생략
+- 레이턴시 및 비용 절감
+
+### 단점
+- 판단 오류 시 hallucination 위험
+- 기업 내부 문서 RAG에서는 대부분 검색 필요
+
+### Agent 모드에서의 활용
+Agent가 도구 호출 여부를 스스로 판단하므로, CAG가 암묵적으로 적용됨.
+명시적 CAG는 Basic 모드에서 더 유용할 수 있음.
+
+### 도입 시점
+- 일반 지식 질문과 도메인 질문이 혼재할 때
+- 검색이 불필요한 질문이 상당수일 때
+
+### 참고 자료
+- [Context Awareness Gate for RAG (arXiv)](https://arxiv.org/html/2411.16133)
+
+---
+
+## 9. 향후 개선: Dynamic Context Selection
+
+### 개요
+쿼리 특성에 따라 검색 결과 개수(k)나 포맷을 동적으로 결정.
+
+```python
+# Agent에서 k값을 동적으로 결정
+@tool
+def search_documents(query: str, complexity: str = "normal") -> str:
+    k = {"simple": 3, "normal": 5, "complex": 10}.get(complexity, 5)
+    # ...
+```
+
+### 2025 연구: DynamicRAG
+- 고정 k 대신 **동적으로 문서 수 결정**
+- Reranking 필요 여부도 동적 판단
+
+### 현실적 대안
+```python
+def select_k_simple(query: str) -> int:
+    # Rule-based: LLM 호출 없이
+    if "비교" in query or "차이" in query:
+        return 7  # 비교 질문은 더 많이
+    if len(query) < 20:
+        return 3  # 짧은 질문은 적게
+    return 5
+```
+
+### 참고 자료
+- [Dynamic Context Selection for RAG (arXiv)](https://arxiv.org/html/2512.14313)
+- [Adaptive-RAG Framework](https://arxiv.org/html/2506.00054v1)

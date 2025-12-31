@@ -182,3 +182,94 @@ OpenSearch 인덱스에서 사용 가능한 필드:
 - [Context Window Utilization (arXiv)](https://arxiv.org/html/2407.19794v2)
 - [Best Chunking Strategies 2025](https://www.firecrawl.dev/blog/best-chunking-strategies-rag-2025)
 - [OpenSearch RAG Processor](https://docs.opensearch.org/latest/search-plugins/search-pipelines/rag-processor/)
+
+---
+
+## 향후 개선 방향
+
+### 1. Query-Aware Context Formatting (쿼리 인식 포맷팅)
+
+질문 유형에 따라 컨텍스트 포맷을 다르게 구성.
+
+| 질문 유형 | 추천 포맷 |
+|----------|----------|
+| 사실 확인 | 간단한 번호 목록 |
+| 비교 질문 | 테이블 형태 |
+| 분석 질문 | 상세 메타데이터 포함 |
+
+**연구 결과** ([arXiv 2411.10541](https://arxiv.org/html/2411.10541v1)):
+- GPT-3.5: 포맷에 따라 **최대 40% 성능 차이**
+- GPT-4: 상대적으로 안정적
+- **최적 포맷이 모델/태스크마다 다름**
+
+**현실적 접근**: LLM에게 포맷 결정을 맡기는 것보다, A/B 테스트로 최적 포맷을 찾아 고정하는 것이 효율적.
+
+### 2. Context Compression (컨텍스트 압축)
+
+검색 결과를 LLM에 바로 전달하지 않고, 먼저 압축/요약 후 전달.
+
+```
+[일반 RAG]
+검색결과(10K 토큰) ────────────────────► LLM ──► 답변
+
+[Context Compression]
+검색결과(10K 토큰) ──► LLM(압축) ──► 압축본(2K) ──► LLM ──► 답변
+```
+
+**장점:**
+- 토큰 비용 절감 (특히 GPT-4 같은 고가 모델)
+- 긴 컨텍스트의 노이즈 제거
+- "Lost in the Middle" 문제 완화
+
+**단점:**
+- LLM 2번 호출 (레이턴시 증가)
+- 압축 과정에서 정보 손실 가능
+
+**도입 시점:**
+- 컨텍스트가 consistently 10K+ 토큰일 때
+- 토큰 비용이 병목일 때
+
+**참고:**
+- [Contextual Compression in RAG Survey (arXiv)](https://arxiv.org/html/2409.13385v1)
+- LangChain `ContextualCompressionRetriever`
+
+### 3. Hierarchical RAG (계층적 검색)
+
+문서 → 섹션 → 단락 순으로 계층적 검색.
+
+```
+1. 후보 문서 검색 (top 20)
+      ↓
+2. 문서 내 관련 섹션 검색 (top 10)
+      ↓
+3. 섹션 내 관련 단락 검색 (top 5)
+      ↓
+4. 최종 단락만 LLM에 전달
+```
+
+**장점:**
+- 대규모 문서에서 정밀한 검색
+- "Lost in the Middle" 완화
+- 컨텍스트 품질 향상
+
+**도입 시점:**
+- 문서가 매우 길고 구조화되어 있을 때
+- 단일 검색으로 정확도가 부족할 때
+
+### 4. Parent-Child Retrieval (Sentence Window)
+
+작은 청크로 검색하고, 큰 청크로 컨텍스트 제공.
+
+```
+인덱싱:
+- Parent 청크: 2000 토큰 (LLM 컨텍스트용)
+- Child 청크: 200 토큰 (검색용)
+
+검색:
+Child로 검색 ──► Parent 청크 반환 ──► LLM
+(정밀 검색)      (충분한 문맥)
+```
+
+**장점:** 검색 정밀도 + 컨텍스트 완전성 모두 확보
+
+**참고:** [LlamaIndex - Sentence Window Retrieval](https://docs.llamaindex.ai/en/stable/examples/node_postprocessor/MetadataReplacementDemo/)

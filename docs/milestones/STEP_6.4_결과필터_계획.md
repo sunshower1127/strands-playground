@@ -307,3 +307,42 @@ rerank = [
 - [Weaviate - Retrieval Evaluation Metrics](https://weaviate.io/blog/retrieval-evaluation-metrics)
 - [RAG Evaluation Metrics Guide](https://medium.com/@autorag/tips-to-understand-rag-retrieval-metrics-71e9a2bd4b96)
 - [Relevance Filtering Research (2024)](https://arxiv.org/html/2408.04887v1)
+
+---
+
+## 향후 개선: 고급 Reranker 옵션
+
+> 현재 FlashRank로 시작. 품질 이슈 시 아래 모델 검토.
+
+### 2025 Reranker 비교
+
+| 모델 | 정확도 | 속도 | 비용 | 다국어 | 특징 |
+|------|--------|------|------|--------|------|
+| **FlashRank** | Good | Very Fast | Free | 제한적 | ONNX, CPU 최적화 |
+| **BGE-reranker-v2-m3** | High | Moderate | Free | ✅ | 오픈소스 SOTA |
+| **Cohere Rerank 3.5** | High | Fast | API | ✅ 100+ | 프로덕션 안정성 |
+| **Cohere Rerank 3.5 Nimble** | High | Very Fast | API | ✅ | 속도 최적화 버전 |
+| **Voyage Rerank 2.5** | Very High | Fast | API | ✅ | 최신 SOTA |
+
+### rerankers 라이브러리 활용
+```python
+from rerankers import Reranker
+
+# FlashRank (현재 계획)
+ranker = Reranker("ms-marco-MiniLM-L-12-v2", model_type="flashrank")
+
+# BGE (더 정확, 무료) - 추천
+ranker = Reranker("BAAI/bge-reranker-v2-m3", model_type="cross-encoder")
+
+# Cohere (API, 프로덕션)
+ranker = Reranker("rerank-english-v3.0", model_type="cohere")
+```
+
+### 권장 업그레이드 경로
+1. **시작**: FlashRank (빠르고 무료)
+2. **품질 개선 필요시**: BGE-reranker-v2-m3
+3. **프로덕션 + 다국어**: Cohere Rerank 3.5
+
+### 참고 자료
+- [ZeroEntropy - Best Reranking Model 2025](https://www.zeroentropy.dev/articles/ultimate-guide-to-choosing-the-best-reranking-model-in-2025)
+- [Agentset Reranker Leaderboard](https://agentset.ai/rerankers)
