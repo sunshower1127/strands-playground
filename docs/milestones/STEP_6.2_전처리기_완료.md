@@ -1,8 +1,13 @@
 # STEP CC: 쿼리 전처리기 (Preprocessor)
 
-## 상태: 조사 완료
+## 상태: 완료
+
+- [x] `NoopPreprocessor` 구현
+- [x] `MinimalPreprocessor` 구현
+- [x] `KoreanPreprocessor` 구현
 
 ## 목표
+
 사용자 질문을 검색에 최적화된 형태로 변환
 
 ---
@@ -11,22 +16,22 @@
 
 ### 1. OpenSearch Nori가 이미 처리하는 것들
 
-| 처리 항목 | Nori 자동 처리 | 비고 |
-|-----------|---------------|------|
-| 조사 (은/는/이/가/을/를) | ✅ | `nori_part_of_speech` 기본 stoptags에 "J" 포함 |
-| 어미 (E) | ✅ | 기본 stoptags에 "E" 포함 |
-| 형태소 분석 | ✅ | 자동 토크나이징 |
-| 복합어 분리 | ✅ | `decompound_mode: discard` |
+| 처리 항목                | Nori 자동 처리 | 비고                                           |
+| ------------------------ | -------------- | ---------------------------------------------- |
+| 조사 (은/는/이/가/을/를) | ✅             | `nori_part_of_speech` 기본 stoptags에 "J" 포함 |
+| 어미 (E)                 | ✅             | 기본 stoptags에 "E" 포함                       |
+| 형태소 분석              | ✅             | 자동 토크나이징                                |
+| 복합어 분리              | ✅             | `decompound_mode: discard`                     |
 
 **결론:** BM25 검색 시 Nori가 조사/어미를 자동 제거함. 별도 전처리 불필요.
 
 ### 2. 임베딩 모델에서 전처리 효과
 
-| 의견 | 출처 |
-|------|------|
-| "불용어 제거가 결과에 유리하지 않았다" | [OpenAI 커뮤니티](https://community.openai.com/t/text-pre-processing-for-text-embedding-ada-002/315997) |
-| "워드 임베딩 훈련 시 불용어 제거 불필요" | [Microsoft NLP Issues](https://github.com/microsoft/nlp-recipes/issues/395) |
-| "BERT 기반 모델은 문맥 이해에 불용어 필요" | 일반적 견해 |
+| 의견                                       | 출처                                                                                                    |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| "불용어 제거가 결과에 유리하지 않았다"     | [OpenAI 커뮤니티](https://community.openai.com/t/text-pre-processing-for-text-embedding-ada-002/315997) |
+| "워드 임베딩 훈련 시 불용어 제거 불필요"   | [Microsoft NLP Issues](https://github.com/microsoft/nlp-recipes/issues/395)                             |
+| "BERT 기반 모델은 문맥 이해에 불용어 필요" | 일반적 견해                                                                                             |
 
 **결론:** 최신 임베딩 모델(Titan 등)은 문맥을 이해하므로 전처리 효과 미미하거나 오히려 해로울 수 있음.
 
@@ -41,6 +46,7 @@ def _remove_korean_particles(query: str) -> str:
 ```
 
 **분석:**
+
 - 유니코드 정규화: 의미 있음 (특히 한글 자모 정규화)
 - 문장부호 정리: 의미 있음
 - 종결어미 제거: Nori가 처리하므로 BM25에서 중복, 임베딩에서는 효과 불명확
@@ -48,12 +54,12 @@ def _remove_korean_particles(query: str) -> str:
 
 ### 4. 외부 라이브러리 비교
 
-| 라이브러리 | 장점 | 단점 | 추천 |
-|------------|------|------|------|
-| **kiwipiepy** | 빠름, 순수 Python, 불용어 필터 내장 | 의존성 추가 | △ |
-| **KoNLPy** | 다양한 분석기 (Mecab, Komoran) | JVM 의존성, 설치 복잡 | X |
-| **직접 구현 (regex)** | 의존성 없음, 단순 | 기능 제한 | ○ |
-| **전처리 안 함** | 가장 단순 | - | ◎ |
+| 라이브러리            | 장점                                | 단점                  | 추천 |
+| --------------------- | ----------------------------------- | --------------------- | ---- |
+| **kiwipiepy**         | 빠름, 순수 Python, 불용어 필터 내장 | 의존성 추가           | △    |
+| **KoNLPy**            | 다양한 분석기 (Mecab, Komoran)      | JVM 의존성, 설치 복잡 | X    |
+| **직접 구현 (regex)** | 의존성 없음, 단순                   | 기능 제한             | ○    |
+| **전처리 안 함**      | 가장 단순                           | -                     | ◎    |
 
 ---
 
@@ -87,6 +93,7 @@ class MinimalPreprocessor:
 ### 기존 KoreanPreprocessor는?
 
 기존 프로젝트의 `_remove_korean_particles` 로직:
+
 - **유니코드 정규화**: 유지 가치 있음
 - **종결어미 제거**: 효과 불명확, 테스트 후 결정
 - **숫자 단위 정규화**: 효과 불명확, 테스트 후 결정
@@ -99,11 +106,11 @@ class MinimalPreprocessor:
 
 파이프라인 완성 후 비교 테스트:
 
-| 전처리기 | 테스트 |
-|---------|--------|
-| NoopPreprocessor | 기준선 |
-| MinimalPreprocessor | 유니코드만 |
-| KoreanPreprocessor | 기존 로직 전체 |
+| 전처리기            | 테스트         |
+| ------------------- | -------------- |
+| NoopPreprocessor    | 기준선         |
+| MinimalPreprocessor | 유니코드만     |
+| KoreanPreprocessor  | 기존 로직 전체 |
 
 동일 질문셋으로 검색 결과 비교 → 실제 차이 측정
 
@@ -120,12 +127,14 @@ class MinimalPreprocessor:
 ---
 
 ## 파일
+
 - `src/rag/preprocessor.py`
 - `tests/test_preprocessor.py`
 
 ---
 
 ## 할 일
+
 - [ ] Protocol 정의
 - [ ] NoopPreprocessor 구현
 - [ ] MinimalPreprocessor 구현 (선택)
