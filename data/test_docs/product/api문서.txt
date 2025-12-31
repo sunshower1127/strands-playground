@@ -1,0 +1,564 @@
+# FlowSync API 문서
+
+> API 버전: v2
+> Base URL: https://api.flowsync.io/v2
+> 최종 수정: 2024년 10월 1일
+
+## 1. 개요
+
+### 1.1 FlowSync API 소개
+
+FlowSync API는 FlowSync 플랫폼의 모든 기능에 프로그래밍 방식으로 접근할 수 있는 RESTful API입니다. 태스크 관리, 파일 업로드, 사용자 관리 등 다양한 작업을 자동화할 수 있습니다.
+
+### 1.2 API 사용 권한
+
+API 사용을 위해서는 적절한 권한이 필요합니다:
+
+| 권한 레벨 | 설명 | 발급 조건 |
+|---------|------|---------|
+| Read | 조회만 가능 | 모든 사용자 |
+| Write | 조회 + 생성/수정 | Pro 이상 플랜 |
+| Admin | 전체 권한 | Enterprise 플랜 + 관리자 |
+
+**신규 입사자 API 권한**:
+- 입사 후 기본적으로 Read 권한 부여
+- Write 권한: 팀장 승인 후 IT팀에서 발급 (보통 1-2일 소요)
+- Admin 권한: 부서장 + 보안팀 승인 필요
+
+### 1.3 Rate Limiting
+
+API 호출에는 다음과 같은 제한이 적용됩니다:
+
+| 플랜 | 요청 제한 |
+|-----|---------|
+| Free | 100 requests/hour |
+| Pro | 1,000 requests/hour |
+| Enterprise | 10,000 requests/hour |
+
+제한 초과 시 `429 Too Many Requests` 응답이 반환됩니다.
+
+## 2. 인증
+
+### 2.1 API 키 발급
+
+API 키는 FlowSync 설정에서 발급받을 수 있습니다.
+
+1. FlowSync 웹 접속
+2. [설정] > [통합] > [API]
+3. [새 API 키 생성] 클릭
+4. 키 이름 및 권한 범위 설정
+5. 생성된 키 복사 (한 번만 표시됨)
+
+### 2.2 인증 헤더
+
+모든 API 요청에 다음 헤더를 포함해야 합니다:
+
+```
+Authorization: Bearer YOUR_API_KEY
+Content-Type: application/json
+```
+
+### 2.3 인증 예시
+
+```bash
+curl -X GET "https://api.flowsync.io/v2/tasks" \
+  -H "Authorization: Bearer fs_live_abc123xyz" \
+  -H "Content-Type: application/json"
+```
+
+```python
+import requests
+
+headers = {
+    "Authorization": "Bearer fs_live_abc123xyz",
+    "Content-Type": "application/json"
+}
+
+response = requests.get(
+    "https://api.flowsync.io/v2/tasks",
+    headers=headers
+)
+```
+
+### 2.4 OAuth 2.0
+
+써드파티 앱 연동을 위한 OAuth 2.0도 지원합니다.
+
+**Authorization URL**: `https://api.flowsync.io/oauth/authorize`
+**Token URL**: `https://api.flowsync.io/oauth/token`
+
+지원 Grant Types:
+- Authorization Code
+- Client Credentials (서버 투 서버)
+
+## 3. 에러 처리
+
+### 3.1 에러 응답 형식
+
+```json
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Invalid or expired API key",
+    "details": {
+      "hint": "Check if your API key is correct and not expired"
+    }
+  }
+}
+```
+
+### 3.2 HTTP 상태 코드
+
+| 코드 | 설명 |
+|-----|------|
+| 200 | 성공 |
+| 201 | 생성 성공 |
+| 204 | 성공 (응답 본문 없음) |
+| 400 | 잘못된 요청 (파라미터 오류) |
+| 401 | 인증 실패 (API 키 없음/유효하지 않음) |
+| 403 | 권한 없음 (접근 권한 부족) |
+| 404 | 리소스를 찾을 수 없음 |
+| 409 | 충돌 (중복 데이터 등) |
+| 422 | 처리 불가 (유효성 검사 실패) |
+| 429 | 요청 제한 초과 |
+| 500 | 서버 내부 오류 |
+| 503 | 서비스 일시 중단 |
+
+### 3.3 에러 코드 상세
+
+**401 Unauthorized vs 403 Forbidden 차이**:
+
+**401 Unauthorized**:
+- 인증 자체가 실패한 경우
+- API 키가 없거나 만료됨
+- API 키 형식이 잘못됨
+- 해결: 유효한 API 키로 재인증
+
+**403 Forbidden**:
+- 인증은 성공했으나 권한이 없는 경우
+- 해당 리소스에 접근 권한이 없음
+- Read 권한으로 Write 작업 시도
+- 다른 사용자의 프라이빗 리소스 접근
+- 해결: 권한 상향 요청 또는 접근 가능한 리소스로 변경
+
+**에러 코드 목록**:
+
+| 에러 코드 | HTTP 상태 | 설명 |
+|----------|----------|------|
+| UNAUTHORIZED | 401 | 인증 실패 |
+| INVALID_API_KEY | 401 | 잘못된 API 키 |
+| EXPIRED_API_KEY | 401 | 만료된 API 키 |
+| FORBIDDEN | 403 | 권한 부족 |
+| RESOURCE_FORBIDDEN | 403 | 리소스 접근 권한 없음 |
+| NOT_FOUND | 404 | 리소스 없음 |
+| VALIDATION_ERROR | 422 | 입력 데이터 검증 실패 |
+| RATE_LIMITED | 429 | 요청 제한 초과 |
+| INTERNAL_ERROR | 500 | 서버 오류 |
+
+## 4. 태스크 API
+
+### 4.1 태스크 목록 조회
+
+```
+GET /tasks
+```
+
+**Query Parameters**:
+| 파라미터 | 타입 | 설명 | 기본값 |
+|---------|-----|------|-------|
+| project_id | string | 프로젝트 ID (필수) | - |
+| status | string | 상태 필터 (todo/in_progress/done) | all |
+| assignee | string | 담당자 ID | - |
+| limit | integer | 반환 개수 | 50 |
+| offset | integer | 시작 위치 | 0 |
+
+**응답 예시**:
+```json
+{
+  "tasks": [
+    {
+      "id": "task_abc123",
+      "title": "API 문서 작성",
+      "description": "v2 API 문서를 작성합니다",
+      "status": "in_progress",
+      "priority": "high",
+      "assignee": {
+        "id": "user_xyz",
+        "name": "김개발"
+      },
+      "due_date": "2024-10-30",
+      "created_at": "2024-10-01T09:00:00Z",
+      "updated_at": "2024-10-15T14:30:00Z"
+    }
+  ],
+  "pagination": {
+    "total": 150,
+    "limit": 50,
+    "offset": 0,
+    "has_more": true
+  }
+}
+```
+
+### 4.2 태스크 생성
+
+```
+POST /tasks
+```
+
+**Request Body**:
+```json
+{
+  "project_id": "proj_abc123",
+  "title": "새로운 태스크",
+  "description": "태스크 상세 설명",
+  "status": "todo",
+  "priority": "medium",
+  "assignee_id": "user_xyz",
+  "due_date": "2024-11-01",
+  "tags": ["backend", "api"]
+}
+```
+
+**응답**: 생성된 태스크 객체 (201 Created)
+
+### 4.3 태스크 수정
+
+```
+PATCH /tasks/{task_id}
+```
+
+**Request Body** (수정할 필드만 포함):
+```json
+{
+  "status": "done",
+  "priority": "low"
+}
+```
+
+### 4.4 태스크 삭제
+
+```
+DELETE /tasks/{task_id}
+```
+
+**응답**: 204 No Content
+
+### 4.5 하위 태스크
+
+**하위 태스크 목록**:
+```
+GET /tasks/{task_id}/subtasks
+```
+
+**하위 태스크 생성**:
+```
+POST /tasks/{task_id}/subtasks
+```
+
+## 5. 파일 API
+
+### 5.1 파일 목록 조회
+
+```
+GET /files
+```
+
+**Query Parameters**:
+| 파라미터 | 타입 | 설명 |
+|---------|-----|------|
+| folder_id | string | 폴더 ID (루트는 'root') |
+| type | string | 파일 타입 필터 (document/image/video) |
+
+### 5.2 파일 업로드
+
+**단일 파일 업로드**:
+```
+POST /files/upload
+Content-Type: multipart/form-data
+```
+
+**파라미터**:
+- `file`: 업로드할 파일 (필수)
+- `folder_id`: 대상 폴더 ID (선택)
+- `name`: 파일 이름 (선택)
+
+**예시**:
+```bash
+curl -X POST "https://api.flowsync.io/v2/files/upload" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -F "file=@/path/to/document.pdf" \
+  -F "folder_id=folder_abc123"
+```
+
+**대용량 파일 업로드** (100MB 이상):
+
+1. 업로드 세션 시작:
+```
+POST /files/upload/start
+```
+```json
+{
+  "file_name": "large_video.mp4",
+  "file_size": 524288000,
+  "content_type": "video/mp4"
+}
+```
+
+2. 청크 업로드:
+```
+PUT /files/upload/{upload_id}/part/{part_number}
+```
+
+3. 업로드 완료:
+```
+POST /files/upload/{upload_id}/complete
+```
+
+### 5.3 파일 다운로드
+
+```
+GET /files/{file_id}/download
+```
+
+**응답**: 파일 다운로드 URL (15분간 유효)
+
+```json
+{
+  "download_url": "https://cdn.flowsync.io/files/...",
+  "expires_at": "2024-10-15T15:00:00Z"
+}
+```
+
+### 5.4 파일 정보 조회
+
+```
+GET /files/{file_id}
+```
+
+**응답**:
+```json
+{
+  "id": "file_abc123",
+  "name": "project_spec.pdf",
+  "size": 1048576,
+  "mime_type": "application/pdf",
+  "folder_id": "folder_xyz",
+  "created_by": {
+    "id": "user_123",
+    "name": "박기획"
+  },
+  "created_at": "2024-10-01T10:00:00Z",
+  "updated_at": "2024-10-10T11:30:00Z",
+  "version": 3,
+  "share_settings": {
+    "visibility": "team",
+    "link_enabled": false
+  }
+}
+```
+
+### 5.5 파일 삭제
+
+```
+DELETE /files/{file_id}
+```
+
+삭제된 파일은 휴지통으로 이동하며, 30일 후 영구 삭제됩니다.
+
+## 6. 사용자 API
+
+### 6.1 현재 사용자 정보
+
+```
+GET /users/me
+```
+
+**응답**:
+```json
+{
+  "id": "user_abc123",
+  "email": "developer@techflow.kr",
+  "name": "김개발",
+  "avatar_url": "https://...",
+  "role": "member",
+  "teams": [
+    {"id": "team_dev", "name": "개발팀"}
+  ],
+  "permissions": ["read", "write"],
+  "created_at": "2023-01-15T09:00:00Z"
+}
+```
+
+### 6.2 팀 멤버 목록
+
+```
+GET /teams/{team_id}/members
+```
+
+### 6.3 사용자 검색
+
+```
+GET /users/search?q={query}
+```
+
+## 7. 프로젝트 API
+
+### 7.1 프로젝트 목록
+
+```
+GET /projects
+```
+
+### 7.2 프로젝트 생성
+
+```
+POST /projects
+```
+
+```json
+{
+  "name": "신규 프로젝트",
+  "description": "프로젝트 설명",
+  "visibility": "team",
+  "team_id": "team_abc123"
+}
+```
+
+### 7.3 프로젝트 설정 수정
+
+```
+PATCH /projects/{project_id}/settings
+```
+
+## 8. Webhook
+
+### 8.1 Webhook 설정
+
+```
+POST /webhooks
+```
+
+```json
+{
+  "url": "https://your-server.com/webhook",
+  "events": ["task.created", "task.completed", "file.uploaded"],
+  "secret": "your_webhook_secret"
+}
+```
+
+### 8.2 Webhook 이벤트
+
+| 이벤트 | 설명 |
+|-------|------|
+| task.created | 태스크 생성 |
+| task.updated | 태스크 수정 |
+| task.completed | 태스크 완료 |
+| task.deleted | 태스크 삭제 |
+| file.uploaded | 파일 업로드 |
+| file.updated | 파일 수정 |
+| file.deleted | 파일 삭제 |
+| comment.added | 댓글 추가 |
+| member.joined | 멤버 참여 |
+| member.left | 멤버 퇴장 |
+
+### 8.3 Webhook 페이로드
+
+```json
+{
+  "event": "task.completed",
+  "timestamp": "2024-10-15T10:30:00Z",
+  "data": {
+    "task": {
+      "id": "task_abc123",
+      "title": "API 문서 작성",
+      "completed_by": {
+        "id": "user_xyz",
+        "name": "김개발"
+      }
+    }
+  }
+}
+```
+
+### 8.4 Webhook 검증
+
+수신된 Webhook 요청의 진위를 검증합니다.
+
+```python
+import hmac
+import hashlib
+
+def verify_webhook(payload, signature, secret):
+    expected = hmac.new(
+        secret.encode(),
+        payload.encode(),
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(f"sha256={expected}", signature)
+```
+
+## 9. SDK
+
+### 9.1 공식 SDK
+
+| 언어 | 패키지 | 설치 |
+|-----|-------|------|
+| Python | flowsync-python | `pip install flowsync` |
+| JavaScript | @flowsync/sdk | `npm install @flowsync/sdk` |
+| Go | flowsync-go | `go get github.com/techflow/flowsync-go` |
+
+### 9.2 Python SDK 예시
+
+```python
+from flowsync import FlowSync
+
+client = FlowSync(api_key="fs_live_abc123xyz")
+
+# 태스크 목록 조회
+tasks = client.tasks.list(project_id="proj_abc123")
+
+# 태스크 생성
+new_task = client.tasks.create(
+    project_id="proj_abc123",
+    title="새 태스크",
+    assignee_id="user_xyz"
+)
+
+# 파일 업로드
+uploaded = client.files.upload(
+    file_path="/path/to/file.pdf",
+    folder_id="folder_xyz"
+)
+```
+
+### 9.3 JavaScript SDK 예시
+
+```javascript
+import { FlowSync } from '@flowsync/sdk';
+
+const client = new FlowSync({ apiKey: 'fs_live_abc123xyz' });
+
+// 태스크 목록 조회
+const tasks = await client.tasks.list({ projectId: 'proj_abc123' });
+
+// 태스크 생성
+const newTask = await client.tasks.create({
+  projectId: 'proj_abc123',
+  title: '새 태스크',
+  assigneeId: 'user_xyz'
+});
+```
+
+## 10. 지원
+
+API 관련 문의:
+- 개발자 포럼: developers.flowsync.io
+- 이메일: api-support@flowsync.io
+- Slack: #flowsync-api (TechFlow 워크스페이스)
+
+버그 리포트: github.com/techflow/flowsync-api/issues
+
+---
+
+*FlowSync API v2 | © 2024 TechFlow Inc.*

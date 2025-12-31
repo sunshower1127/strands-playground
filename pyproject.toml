@@ -16,6 +16,7 @@ dependencies = [
 [tool.ruff]
 line-length = 120
 target-version = "py311"
+src = ["src", "scripts", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
@@ -27,8 +28,16 @@ indent-style = "space"
 
 [dependency-groups]
 dev = [
+    "pytest>=9.0.2",
     "ruff>=0.14.10",
 ]
 
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::UserWarning",
+    "ignore::urllib3.exceptions.InsecureRequestWarning",
+]
+testpaths = ["tests"]
+
 [project.scripts]
-test-opensearch = "scripts.test_opensearch:test_connection"
+test-opensearch = "scripts.test_opensearch:main"

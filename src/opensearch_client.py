@@ -51,3 +51,58 @@ class OpenSearchClient:
             size=size,
         )
         return response["hits"]["hits"]
+
+    def get_sample_docs(self, index: str, size: int = 1) -> list[dict]:
+        """샘플 문서 조회 (구조 파악용)"""
+        response = self.client.search(
+            index=index,
+            body={"query": {"match_all": {}}},
+            size=size,
+        )
+        return response["hits"]["hits"]
+
+    def get_index_mapping(self, index: str) -> dict:
+        """인덱스 매핑 정보 (필드 구조 확인)"""
+        return self.client.indices.get_mapping(index=index)
+
+    def get_doc_count(self, index: str) -> int:
+        """인덱스 문서 개수"""
+        response = self.client.count(index=index)
+        return response["count"]
+
+    def get_doc_count_by_project(self, index: str, project_id: int) -> int:
+        """project_id별 문서 개수"""
+        query = {"query": {"term": {"project_id": project_id}}}
+        response = self.client.count(index=index, body=query)
+        return response["count"]
+
+    def get_docs_by_project(self, index: str, project_id: int, size: int = 100) -> list[dict]:
+        """project_id로 문서 조회"""
+        query = {"query": {"term": {"project_id": project_id}}}
+        response = self.client.search(index=index, body=query, size=size)
+        return response["hits"]["hits"]
+
+    def get_all_docs_by_project(self, index: str, project_id: int) -> list[dict]:
+        """project_id로 모든 문서 조회 (scroll API 사용)"""
+        query = {"query": {"term": {"project_id": project_id}}}
+        docs = []
+
+        # 첫 번째 요청
+        response = self.client.search(index=index, body=query, size=100, scroll="2m")
+        scroll_id = response["_scroll_id"]
+        hits = response["hits"]["hits"]
+        docs.extend(hits)
+
+        # scroll로 나머지 가져오기
+        while hits:
+            response = self.client.scroll(scroll_id=scroll_id, scroll="2m")
+            scroll_id = response["_scroll_id"]
+            hits = response["hits"]["hits"]
+            docs.extend(hits)
+
+        return docs
+
+    def get_texts_by_project(self, index: str, project_id: int) -> list[str]:
+        """project_id로 text 필드만 추출"""
+        docs = self.get_all_docs_by_project(index, project_id)
+        return [doc["_source"].get("text", "") for doc in docs if doc["_source"].get("text")]

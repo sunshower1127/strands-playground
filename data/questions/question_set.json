@@ -1,0 +1,150 @@
+{
+  "version": "1.0",
+  "total_questions": 18,
+  "questions": [
+    {
+      "id": 1,
+      "level": 1,
+      "category": "single_retrieval",
+      "question": "연차 휴가는 며칠인가?",
+      "documents_required": ["휴가정책.md"],
+      "tools_required": ["document_search"]
+    },
+    {
+      "id": 2,
+      "level": 1,
+      "category": "single_retrieval",
+      "question": "FlowSync의 주요 기능 3가지는?",
+      "documents_required": ["기능가이드.md"],
+      "tools_required": ["document_search"]
+    },
+    {
+      "id": 3,
+      "level": 1,
+      "category": "single_retrieval",
+      "question": "재택근무 신청 방법은?",
+      "documents_required": ["재택가이드.md"],
+      "tools_required": ["document_search"]
+    },
+    {
+      "id": 4,
+      "level": 1,
+      "category": "single_retrieval",
+      "question": "현재 FlowSync 버전은?",
+      "documents_required": ["변경이력.md"],
+      "tools_required": ["document_search"]
+    },
+    {
+      "id": 5,
+      "level": 2,
+      "category": "multi_retrieval",
+      "question": "휴가와 재택근무를 동시에 사용할 수 있나?",
+      "documents_required": ["휴가정책.md", "재택가이드.md"],
+      "tools_required": ["document_search"]
+    },
+    {
+      "id": 6,
+      "level": 2,
+      "category": "multi_retrieval",
+      "question": "복지 포인트로 사용 가능한 항목 전체 목록은?",
+      "documents_required": ["복지제도.md"],
+      "tools_required": ["document_search"]
+    },
+    {
+      "id": 7,
+      "level": 2,
+      "category": "multi_retrieval",
+      "question": "Q3에 계획된 FlowSync 신기능들은?",
+      "documents_required": ["로드맵2024.md", "회의록.md"],
+      "tools_required": ["document_search"]
+    },
+    {
+      "id": 8,
+      "level": 2,
+      "category": "multi_retrieval",
+      "question": "API 에러 코드 401과 403의 차이는?",
+      "documents_required": ["api문서.md", "트러블슈팅.md"],
+      "tools_required": ["document_search"]
+    },
+    {
+      "id": 9,
+      "level": 2,
+      "category": "multi_retrieval",
+      "question": "최근 3개월간 주요 변경사항을 정리해줘",
+      "documents_required": ["변경이력.md", "회의록.md"],
+      "tools_required": ["document_search"]
+    },
+    {
+      "id": 10,
+      "level": 3,
+      "category": "multi_step_reasoning",
+      "question": "입사 1년차가 해외여행을 가려면 어떤 절차가 필요한가?",
+      "documents_required": ["휴가정책.md", "복지제도.md"],
+      "tools_required": ["document_search"]
+    },
+    {
+      "id": 11,
+      "level": 3,
+      "category": "multi_step_reasoning",
+      "question": "FlowSync에서 파일 동기화 오류가 나면 어떻게 해결하나?",
+      "documents_required": ["트러블슈팅.md", "기능가이드.md"],
+      "tools_required": ["document_search"]
+    },
+    {
+      "id": 12,
+      "level": 3,
+      "category": "multi_step_reasoning",
+      "question": "로드맵에서 지연된 기능과 그 이유는?",
+      "documents_required": ["로드맵2024.md", "회의록.md", "변경이력.md"],
+      "tools_required": ["document_search"]
+    },
+    {
+      "id": 13,
+      "level": 3,
+      "category": "multi_step_reasoning",
+      "question": "재택근무 중 병가를 내려면?",
+      "documents_required": ["재택가이드.md", "휴가정책.md"],
+      "tools_required": ["document_search"]
+    },
+    {
+      "id": 14,
+      "level": 3,
+      "category": "multi_step_reasoning",
+      "question": "신규 입사자가 FlowSync API를 사용하려면 어떤 권한이 필요한가?",
+      "documents_required": ["api문서.md", "휴가정책.md"],
+      "tools_required": ["document_search"]
+    },
+    {
+      "id": 15,
+      "level": 4,
+      "category": "multi_tool",
+      "question": "우리 휴가 정책이 한국 근로기준법에 맞는가?",
+      "documents_required": ["휴가정책.md"],
+      "tools_required": ["document_search", "web_search"]
+    },
+    {
+      "id": 16,
+      "level": 4,
+      "category": "multi_tool",
+      "question": "FlowSync와 Slack/Notion 기능 비교해줘",
+      "documents_required": ["기능가이드.md"],
+      "tools_required": ["document_search", "web_search"]
+    },
+    {
+      "id": 17,
+      "level": 4,
+      "category": "multi_tool",
+      "question": "2024 IT 트렌드 중 우리 로드맵에 반영된 것은?",
+      "documents_required": ["로드맵2024.md"],
+      "tools_required": ["document_search", "web_search"]
+    },
+    {
+      "id": 18,
+      "level": 4,
+      "category": "multi_tool",
+      "question": "원격근무 관련 최신 법규 변경사항이 우리 정책에 영향 있나?",
+      "documents_required": ["재택가이드.md"],
+      "tools_required": ["document_search", "web_search"]
+    }
+  ]
+}
