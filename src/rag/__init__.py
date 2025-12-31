@@ -8,6 +8,15 @@ from .preprocessor import (
 )
 from .query_builder import HybridQueryBuilder, KNNQueryBuilder, QueryBuilder
 from .query_enhancer import LLMQueryEnhancer, NoopQueryEnhancer, QueryEnhancer
+from .result_filter import (
+    AdaptiveThresholdFilter,
+    CompositeFilter,
+    NoopFilter,
+    RerankerFilter,
+    ResultFilter,
+    ScoreThresholdFilter,
+    TopKFilter,
+)
 
 __all__ = [
     # Preprocessor
@@ -23,4 +32,12 @@ __all__ = [
     "QueryBuilder",
     "KNNQueryBuilder",
     "HybridQueryBuilder",
+    # ResultFilter
+    "ResultFilter",
+    "NoopFilter",
+    "TopKFilter",
+    "ScoreThresholdFilter",
+    "AdaptiveThresholdFilter",
+    "RerankerFilter",
+    "CompositeFilter",
 ]
