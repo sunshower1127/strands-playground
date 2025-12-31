@@ -1,7 +1,7 @@
 .PHONY: format lint tunnel dashboard test os
 
 tunnel:
-	ssh -i ./temp-bastion-key.cer -L 9443:vpc-wissly-opensearch-v2-ugsta6nmff7vh2jw4fytpowfsa.ap-northeast-2.es.amazonaws.com:443 ec2-user@3.36.105.225
+	ssh -i ./credentials/temp-bastion-key.cer -L 9443:vpc-wissly-opensearch-v2-ugsta6nmff7vh2jw4fytpowfsa.ap-northeast-2.es.amazonaws.com:443 ec2-user@3.36.105.225
 
 format:
 	uv run ruff format .
