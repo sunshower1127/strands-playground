@@ -52,6 +52,22 @@ class OpenSearchClient:
         )
         return response["hits"]["hits"]
 
+    def search_with_pipeline(
+        self,
+        index: str,
+        query: dict,
+        size: int = 5,
+        pipeline: str = "hybrid-rrf",
+    ) -> list[dict]:
+        """검색 파이프라인 사용 검색 (하이브리드 RRF 등)"""
+        response = self.client.search(
+            index=index,
+            body=query,
+            size=size,  # type: ignore[call-arg]
+            params={"search_pipeline": pipeline},
+        )
+        return response["hits"]["hits"]
+
     def get_sample_docs(self, index: str, size: int = 1) -> list[dict]:
         """샘플 문서 조회 (구조 파악용)"""
         response = self.client.search(
