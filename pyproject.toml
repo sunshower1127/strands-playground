@@ -8,11 +8,12 @@ dependencies = [
     "anthropic[vertex]>=0.75.0",
     "boto3>=1.42.18",
     "google-cloud-aiplatform>=1.132.0",
-    "litellm>=1.80.11",
     "opensearch-py>=3.0.0",
     "pandas>=2.3.3",
     "pydantic>=2.12.5",
     "python-dotenv>=1.2.1",
+    "strands-agents[litellm]>=1.20.0",
+    "strands-agents-tools>=0.2.18",
 ]
 
 [project.optional-dependencies]
