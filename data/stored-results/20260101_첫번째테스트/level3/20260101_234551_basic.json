@@ -1,0 +1,277 @@
+{
+  "run_id": "20260101_234551",
+  "mode": "basic",
+  "results": [
+    {
+      "id": 10,
+      "level": 3,
+      "category": "multi_step_reasoning",
+      "question": "입사 1년차가 해외여행을 가려면 어떤 절차가 필요한가?",
+      "expected_answer": "1년차는 15일 연차 보유. 5일 이상 장기휴가는 2주 전 팀장 승인 필요. HR 시스템에서 휴가 신청",
+      "key_facts": [
+        "15일 연차",
+        "5일 이상 장기휴가: 2주 전 팀장 승인",
+        "HR 시스템 신청"
+      ],
+      "documents_required": [
+        "휴가정책.txt",
+        "복지제도.txt"
+      ],
+      "answer": "입사 1년차 직원이 해외여행을 가기 위한 절차를 안내해드리겠습니다.\n\n## 휴가 사용 절차\n\n### 1. 연차 휴가 확인\n- **입사 1년 미만**: 월 1일씩 부여 (최대 11일)\n- **입사 1년 이상**: 15일 부여\n- 입사 첫 해는 입사일 기준으로 월할 계산됩니다\n\n### 2. 휴가 신청 방법\n\n**HR Portal 사용**\n1. hr.techflow.kr 접속\n2. 사번 및 비밀번호로 로그인\n3. [휴가 관리] > [휴가 신청] 메뉴 클릭\n4. 휴가 종류, 기간, 사유 입력\n5. 승인자 선택 후 제출\n\n**모바일 앱 사용**\n- TechFlow HR 앱(iOS/Android)에서도 신청 가능\n\n### 3. 승인 절차\n- **일반 연차 (5일 미만)**: 팀장 승인\n- **장기 휴가 (5일 이상 연속)**: 팀장 + 부서장 승인 필요 (2주 전 신청)\n\n### 4. 유의사항\n- **사전 신청**: 연차 사용 3일 전까지 신청\n- **수습 기간 중** (입사 후 3개월): 팀장과 사전 협의 필요\n- 반차 사용도 가능 (오전/오후 반차)\n\n해외여행이 5일 이상 소요되는 경우, 최소 2주 전에 팀장 및 부서장의 승인을 받아야 합니다.",
+      "input_tokens": 3202,
+      "output_tokens": 530,
+      "latency_ms": 10154.2,
+      "model": "claude-sonnet-4-5-20250929",
+      "sources": [
+        {
+          "file_name": "사내규정_요약.txt",
+          "score": 0.41063648
+        },
+        {
+          "file_name": "온보딩가이드.txt",
+          "score": 0.39796394
+        },
+        {
+          "file_name": "휴가정책.txt",
+          "score": 0.3947624
+        },
+        {
+          "file_name": "휴가정책.txt",
+          "score": 0.39157772
+        },
+        {
+          "file_name": "사내규정_요약.txt",
+          "score": 0.39104426
+        }
+      ],
+      "timings": {
+        "embedding": 1112.6,
+        "query_build": 0.0,
+        "search": 133.6,
+        "context_build": 0.0,
+        "prompt_render": 0.0,
+        "llm": 8908.0
+      },
+      "tool_calls": [],
+      "call_history": []
+    },
+    {
+      "id": 11,
+      "level": 3,
+      "category": "multi_step_reasoning",
+      "question": "FlowSync에서 파일 동기화 오류가 나면 어떻게 해결하나?",
+      "expected_answer": "트러블슈팅.txt에서 파일 동기화 오류 해결 방법 확인 필요",
+      "key_facts": [],
+      "documents_required": [
+        "트러블슈팅.txt",
+        "기능가이드.txt"
+      ],
+      "answer": "FlowSync에서 파일 동기화 오류가 발생했을 때 다음과 같이 해결할 수 있습니다:\n\n## 📋 기본 해결 순서\n\n### 1단계: 상태 확인\n- 시스템 트레이 > FlowSync 아이콘 우클릭 > [동기화 상태]\n- 오류 메시지 확인\n\n### 2단계: 기본 조치\n1. **FlowSync 앱 재시작**\n2. **네트워크 연결 확인**\n3. **저장 공간 확인** (최소 1GB 여유 필요)\n\n### 3단계: 충돌 해결\n- 충돌 파일 우클릭 > [충돌 해결]\n- 로컬 유지 / 서버 유지 / 둘 다 유지 중 선택\n\n### 4단계: 강제 동기화\n- 시스템 트레이 > FlowSync > [지금 동기화]\n- 또는 문제 폴더 우클릭 > [동기화 재시도]\n\n## 🔍 특정 파일만 오류가 나는 경우\n\n**주요 원인:**\n- 파일명에 특수문자 포함\n- 파일 크기 제한 초과 (10GB)\n- 파일 경로 길이 초과 (260자)\n- 파일 권한 문제\n\n**해결 방법:**\n\n1. **파일명 확인**\n   - 사용 불가 문자: `\\ / : * ? \" < > |`\n   - 권장 문자: 영문, 숫자, 한글, 공백, `-`, `_`\n\n2. **파일 크기 확인**\n   - 10GB 초과 시 분할 압축\n\n3. **경로 길이 확인**\n   - 전체 경로를 260자 이내로 유지\n   - 예: `C:\\Users\\...\\FlowSync\\폴더\\파일명.확장자`\n\n4. **권한 확인**\n   - 파일 속성 > 보안 탭에서 읽기/쓰기 권한 확인\n\n## 🐌 동기화 속도가 느린 경우\n\n1. **대역폭 제한 해제**: 설정 > 네트워크 > 업로드/다운로드 제한 해제\n2. **선택적 동기화 활성화**: 불필요한 폴더 동기화 제외\n3. **바이러스 백신 제외 설정**: FlowSync 폴더를 검사 제외에 추가\n4. **네트워크 상태 점검**: 다른 파일 다운로드로 속도 테스트\n\n## 💡 참고사항\n\n**동기화 상태 아이콘:**\n- ✅ 초록색 체크: 동기화 완료\n- 🔄 파란색 화살표: 동기화 중\n- ⚠️ 노란색 경고: 충돌 발생\n- ❌ 빨간색 X: 오류\n\n위 방법으로 해결되지 않으면 support@flowsync.io로 문의하시면 됩니다.",
+      "input_tokens": 7555,
+      "output_tokens": 937,
+      "latency_ms": 16534.4,
+      "model": "claude-sonnet-4-5-20250929",
+      "sources": [
+        {
+          "file_name": "트러블슈팅.txt",
+          "score": 0.6081679
+        },
+        {
+          "file_name": "기능가이드.txt",
+          "score": 0.5989726
+        },
+        {
+          "file_name": "트러블슈팅.txt",
+          "score": 0.5365374
+        },
+        {
+          "file_name": "변경이력.txt",
+          "score": 0.5335456
+        },
+        {
+          "file_name": "기능가이드.txt",
+          "score": 0.52681124
+        }
+      ],
+      "timings": {
+        "embedding": 299.9,
+        "query_build": 0.0,
+        "search": 82.4,
+        "context_build": 0.0,
+        "prompt_render": 0.0,
+        "llm": 16152.1
+      },
+      "tool_calls": [],
+      "call_history": []
+    },
+    {
+      "id": 12,
+      "level": 3,
+      "category": "multi_step_reasoning",
+      "question": "로드맵에서 지연된 기능과 그 이유는?",
+      "expected_answer": "로드맵2024.txt, 회의록.txt에서 지연된 기능 및 사유 확인 필요",
+      "key_facts": [],
+      "documents_required": [
+        "로드맵2024.txt",
+        "회의록.txt",
+        "변경이력.txt"
+      ],
+      "answer": "제공된 문서에 따르면, 로드맵에서 지연된 기능은 다음과 같습니다:\n\n## 1. 실시간 화이트보드 (FlowCanvas)\n\n**원래 일정**: Q3 (7-9월)\n**지연된 일정**: Q4로 연기 (2024년 12월 베타 출시 예정)\n\n**지연 사유**:\n- 기술적 복잡도 증가 (실시간 동기화)\n- 핵심 개발자 휴직\n- AI Assistant 우선순위 상향 결정\n\n## 2. 비디오 회의 통합 (FlowMeet)\n\n**원래 일정**: Q4 (10-12월)\n**지연된 일정**: 2025년 Q1로 연기 (2025년 1월 출시 예정)\n\n**지연 사유**:\n- 화이트보드 개발 집중\n\n---\n\n요약하면, 총 2개의 기능이 지연되었으며, 주로 기술적 어려움, 인력 문제, 그리고 우선순위 조정이 주요 원인이었습니다.",
+      "input_tokens": 4311,
+      "output_tokens": 341,
+      "latency_ms": 7543.0,
+      "model": "claude-sonnet-4-5-20250929",
+      "sources": [
+        {
+          "file_name": "로드맵2024.txt",
+          "score": 0.44489852
+        },
+        {
+          "file_name": "로드맵2024.txt",
+          "score": 0.4308692
+        },
+        {
+          "file_name": "트러블슈팅.txt",
+          "score": 0.4125771
+        },
+        {
+          "file_name": "트러블슈팅.txt",
+          "score": 0.40313295
+        },
+        {
+          "file_name": "로드맵2024.txt",
+          "score": 0.4013379
+        }
+      ],
+      "timings": {
+        "embedding": 299.7,
+        "query_build": 0.0,
+        "search": 88.5,
+        "context_build": 0.0,
+        "prompt_render": 0.0,
+        "llm": 7154.8
+      },
+      "tool_calls": [],
+      "call_history": []
+    },
+    {
+      "id": 13,
+      "level": 3,
+      "category": "multi_step_reasoning",
+      "question": "재택근무 중 병가를 내려면?",
+      "expected_answer": "1. 팀장에게 09:00 이전 연락, 2. HR 시스템에서 재택 취소 + 병가 신청, 3. 3일 이상 시 진단서 제출. 컨디션 안 좋으면 무리하지 말고 병가 사용 권장",
+      "key_facts": [
+        "09:00 이전 팀장 연락",
+        "HR 시스템에서 재택 취소 + 병가 신청",
+        "3일 이상: 진단서"
+      ],
+      "documents_required": [
+        "재택가이드.txt",
+        "휴가정책.txt"
+      ],
+      "answer": "재택근무 중 병가를 내려면 다음 절차를 따르세요:\n\n## 재택근무 + 병가 신청 절차\n\n1. **팀장에게 연락** (09:00 이전)\n   - 병가가 필요함을 사전에 알립니다\n\n2. **HR 시스템에서 처리**\n   - 재택근무 취소\n   - 병가 신청\n\n3. **진단서 제출** (3일 이상 시)\n   - 병가가 3일 이상 지속될 경우 의사 진단서를 제출해야 합니다\n\n## 중요 안내사항\n\n문서에서는 **\"컨디션이 좋지 않은 상태에서 무리하게 재택근무하지 말고, 병가를 사용하세요\"**라고 명시하고 있습니다. \n\n건강이 좋지 않을 때는 무리하지 말고 적절히 병가를 활용하는 것이 권장됩니다.",
+      "input_tokens": 3702,
+      "output_tokens": 307,
+      "latency_ms": 6643.3,
+      "model": "claude-sonnet-4-5-20250929",
+      "sources": [
+        {
+          "file_name": "재택가이드.txt",
+          "score": 0.5128465
+        },
+        {
+          "file_name": "재택가이드.txt",
+          "score": 0.48154122
+        },
+        {
+          "file_name": "재택가이드.txt",
+          "score": 0.4713117
+        },
+        {
+          "file_name": "재택가이드.txt",
+          "score": 0.4666069
+        },
+        {
+          "file_name": "재택가이드.txt",
+          "score": 0.4649192
+        }
+      ],
+      "timings": {
+        "embedding": 283.6,
+        "query_build": 0.0,
+        "search": 120.9,
+        "context_build": 0.0,
+        "prompt_render": 0.0,
+        "llm": 6238.8
+      },
+      "tool_calls": [],
+      "call_history": []
+    },
+    {
+      "id": 14,
+      "level": 3,
+      "category": "multi_step_reasoning",
+      "question": "신규 입사자가 FlowSync API를 사용하려면 어떤 권한이 필요한가?",
+      "expected_answer": "api문서.txt에서 API 권한 요구사항 확인 필요",
+      "key_facts": [],
+      "documents_required": [
+        "api문서.txt",
+        "휴가정책.txt"
+      ],
+      "answer": "신규 입사자가 FlowSync API를 사용하기 위한 권한 정보는 다음과 같습니다:\n\n## 기본 권한\n\n신규 입사자는 **입사 후 기본적으로 Read 권한이 부여**됩니다. Read 권한으로는 조회만 가능합니다.\n\n## 권한 레벨별 상세 정보\n\n| 권한 레벨 | 가능한 작업 | 발급 조건 |\n|---------|---------|---------|\n| **Read** | 조회만 가능 | 모든 사용자 (신규 입사자 기본 권한) |\n| **Write** | 조회 + 생성/수정 | Pro 이상 플랜 + 팀장 승인 후 IT팀 발급 |\n| **Admin** | 전체 권한 | Enterprise 플랜 + 부서장 + 보안팀 승인 |\n\n## 권한 상향 절차\n\n**Write 권한이 필요한 경우:**\n- 팀장 승인 후 IT팀에서 발급\n- 소요 시간: 보통 1-2일\n\n**Admin 권한이 필요한 경우:**\n- 부서장 승인 + 보안팀 승인 필요\n\n따라서 신규 입사자는 조회 작업만 필요한 경우 바로 API를 사용할 수 있으며, 데이터 생성/수정이 필요한 경우 팀장 승인을 받아 Write 권한을 발급받아야 합니다.",
+      "input_tokens": 5412,
+      "output_tokens": 466,
+      "latency_ms": 8666.1,
+      "model": "claude-sonnet-4-5-20250929",
+      "sources": [
+        {
+          "file_name": "기능가이드.txt",
+          "score": 0.5304729
+        },
+        {
+          "file_name": "api문서.txt",
+          "score": 0.5202859
+        },
+        {
+          "file_name": "기능가이드.txt",
+          "score": 0.49953005
+        },
+        {
+          "file_name": "기능가이드.txt",
+          "score": 0.4939058
+        },
+        {
+          "file_name": "api문서.txt",
+          "score": 0.4859093
+        }
+      ],
+      "timings": {
+        "embedding": 300.4,
+        "query_build": 0.0,
+        "search": 101.5,
+        "context_build": 0.0,
+        "prompt_render": 0.0,
+        "llm": 8264.2
+      },
+      "tool_calls": [],
+      "call_history": []
+    }
+  ],
+  "summary": {
+    "total_questions": 5,
+    "success_count": 5,
+    "error_count": 0,
+    "avg_latency_ms": 9908.2,
+    "min_latency_ms": 6643.3,
+    "max_latency_ms": 16534.4,
+    "total_input_tokens": 24182,
+    "total_output_tokens": 2581,
+    "total_tokens": 26763,
+    "by_level": {
+      "3": {
+        "count": 5,
+        "avg_latency_ms": 9908.2
+      }
+    }
+  }
+}

@@ -13,6 +13,10 @@ from src.opensearch_client import OpenSearchClient
 
 logger = logging.getLogger(__name__)
 
+# Hybrid 검색 설정 (Basic RAG와 동일)
+SEARCH_FIELDS = ["chunk_text^4.0", "text.ko^3.5", "text.en^1.8"]
+SEARCH_PIPELINE = "hybrid-rrf"
+
 # 싱글턴 클라이언트 (Agent 내에서 재사용)
 _opensearch_client: OpenSearchClient | None = None
 _embedding_client: EmbeddingClient | None = None
@@ -82,21 +86,41 @@ def search_documents(
     # 임베딩 생성
     vector = embedding.embed(query)
 
-    # KNN 쿼리 생성
+    # Hybrid 쿼리 생성 (KNN + BM25)
+    filter_clause = {"term": {"project_id": project_id}}
+
     search_query = {
         "query": {
-            "bool": {
-                "must": [{"knn": {"embedding": {"vector": vector, "k": k}}}],
-                "filter": [{"term": {"project_id": project_id}}],
+            "hybrid": {
+                "queries": [
+                    # BM25 서브쿼리
+                    {
+                        "bool": {
+                            "must": [{"multi_match": {"query": query, "fields": SEARCH_FIELDS}}],
+                            "filter": [filter_clause],
+                        }
+                    },
+                    # KNN 서브쿼리
+                    {
+                        "knn": {
+                            "embedding": {
+                                "vector": vector,
+                                "k": k,
+                                "filter": filter_clause,
+                            }
+                        }
+                    },
+                ]
             }
         }
     }
 
-    # 검색 실행
-    results = opensearch.search(
+    # 검색 실행 (Hybrid RRF 파이프라인)
+    results = opensearch.search_with_pipeline(
         index="rag-index-fargate-live",
         query=search_query,
         size=k,
+        pipeline=SEARCH_PIPELINE,
     )
 
     elapsed_ms = (time.time() - call_start) * 1000

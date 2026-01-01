@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG 비교 평가 - 20260101_205550</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f5f5f5; padding: 20px; line-height: 1.6; }
+        .container { max-width: 1400px; margin: 0 auto; }
+
+        h1 { color: #333; margin-bottom: 10px; }
+        .run-id { color: #666; font-size: 14px; margin-bottom: 30px; }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }
+        .stat-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .stat-card.basic { border-left: 4px solid #4CAF50; }
+        .stat-card.agent { border-left: 4px solid #2196F3; }
+        .stat-card.diff { border-left: 4px solid #FF9800; }
+        .stat-label { font-size: 12px; color: #666; text-transform: uppercase; }
+        .stat-value { font-size: 28px; font-weight: bold; color: #333; }
+        .stat-unit { font-size: 14px; color: #999; }
+
+        .level-chart { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 30px; }
+        .level-chart h2 { margin-bottom: 20px; font-size: 18px; }
+        .level-row { display: flex; align-items: center; margin-bottom: 15px; }
+        .level-label { width: 80px; font-weight: bold; }
+        .level-bars { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+        .bar-container { display: flex; align-items: center; }
+        .bar { height: 24px; border-radius: 4px; display: flex; align-items: center; padding-left: 8px; color: white; font-size: 12px; min-width: 60px; }
+        .bar.basic { background: #4CAF50; }
+        .bar.agent { background: #2196F3; }
+        .bar-label { margin-left: 10px; font-size: 12px; color: #666; }
+
+        .questions { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .questions h2 { margin-bottom: 20px; font-size: 18px; }
+
+        .question-card { border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 15px; overflow: hidden; }
+        .question-header { background: #fafafa; padding: 15px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .question-header:hover { background: #f0f0f0; }
+        .question-meta { display: flex; gap: 10px; align-items: center; }
+        .question-id { font-weight: bold; color: #333; }
+        .question-level { font-size: 12px; padding: 2px 8px; border-radius: 4px; background: #e0e0e0; }
+        .question-level.l1 { background: #E8F5E9; color: #2E7D32; }
+        .question-level.l2 { background: #E3F2FD; color: #1565C0; }
+        .question-level.l3 { background: #FFF3E0; color: #E65100; }
+        .question-level.l4 { background: #FCE4EC; color: #C2185B; }
+        .question-text { flex: 1; margin-left: 15px; color: #333; }
+        .question-stats { display: flex; gap: 15px; font-size: 12px; color: #666; }
+
+        .question-body { padding: 15px; display: none; border-top: 1px solid #e0e0e0; }
+        .question-card.open .question-body { display: block; }
+
+        .answer-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 15px; }
+        .answer-box { padding: 15px; border-radius: 8px; }
+        .answer-box.basic { background: #E8F5E9; }
+        .answer-box.agent { background: #E3F2FD; }
+        .answer-box.expected { background: #FFF8E1; grid-column: 1 / -1; }
+        .answer-label { font-size: 12px; font-weight: bold; color: #666; margin-bottom: 8px; text-transform: uppercase; }
+        .answer-content { font-size: 14px; white-space: pre-wrap; }
+
+        .key-facts { margin-top: 10px; }
+        .key-facts-label { font-size: 12px; color: #666; margin-bottom: 5px; }
+        .key-fact { display: inline-block; font-size: 12px; padding: 2px 8px; margin: 2px; background: #e0e0e0; border-radius: 4px; }
+
+        .toggle-icon { transition: transform 0.2s; }
+        .question-card.open .toggle-icon { transform: rotate(180deg); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Basic vs Agent RAG 비교 평가</h1>
+        <div class="run-id">Run ID: 20260101_205550</div>
+
+        <div class="stats-grid">
+            <div class="stat-card basic">
+                <div class="stat-label">Basic 평균 레이턴시</div>
+                <div class="stat-value">8,312<span class="stat-unit">ms</span></div>
+            </div>
+            <div class="stat-card agent">
+                <div class="stat-label">Agent 평균 레이턴시</div>
+                <div class="stat-value">11,945<span class="stat-unit">ms</span></div>
+            </div>
+            <div class="stat-card diff">
+                <div class="stat-label">레이턴시 차이</div>
+                <div class="stat-value">+3,633<span class="stat-unit">ms</span></div>
+            </div>
+            <div class="stat-card basic">
+                <div class="stat-label">Basic 총 토큰</div>
+                <div class="stat-value">23,040</div>
+            </div>
+            <div class="stat-card agent">
+                <div class="stat-label">Agent 총 토큰</div>
+                <div class="stat-value">33,846</div>
+            </div>
+            <div class="stat-card diff">
+                <div class="stat-label">토큰 차이</div>
+                <div class="stat-value">+10,806</div>
+            </div>
+            <div class="stat-card basic">
+                <div class="stat-label">Basic 비용</div>
+                <div class="stat-value">$0.0870<span class="stat-unit"> (₩126)</span></div>
+            </div>
+            <div class="stat-card agent">
+                <div class="stat-label">Agent 비용</div>
+                <div class="stat-value">$0.1240<span class="stat-unit"> (₩180)</span></div>
+            </div>
+            <div class="stat-card diff">
+                <div class="stat-label">비용 차이</div>
+                <div class="stat-value">$+0.0369<span class="stat-unit"> (₩+54)</span></div>
+            </div>
+        </div>
+
+        <div class="level-chart">
+            <h2>레벨별 레이턴시 비교</h2>
+            
+        <div class="level-row">
+            <div class="level-label">Level 1</div>
+            <div class="level-bars">
+                <div class="bar-container">
+                    <div class="bar basic" style="width: 69.58745625931321%">8,312ms</div>
+                    <span class="bar-label">Basic</span>
+                </div>
+                <div class="bar-container">
+                    <div class="bar agent" style="width: 100.0%">11,945ms</div>
+                    <span class="bar-label">Agent</span>
+                </div>
+            </div>
+        </div>
+        
+        </div>
+
+        <div class="questions">
+            <h2>질문별 상세 비교 (4개)</h2>
+            
+        <div class="question-card">
+            <div class="question-header">
+                <div class="question-meta">
+                    <span class="question-id">Q1</span>
+                    <span class="question-level l1">Level 1</span>
+                </div>
+                <div class="question-text">연차 휴가는 며칠인가?</div>
+                <div class="question-stats">
+                    <span>Basic: 8,646ms</span>
+                    <span>Agent: 17,387ms</span>
+                </div>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="question-body">
+                <div class="answer-box expected">
+                    <div class="answer-label">📌 예상 정답</div>
+                    <div class="answer-content">근속 연수에 따라 다름: 1년 미만 월 1일(최대 11일), 1~3년 15일, 3~5년 17일, 5~10년 20일, 10년 이상 25일</div>
+                    <div class="key-facts"><div class="key-facts-label">핵심 정보:</div><span class="key-fact">1년 미만: 월 1일</span><span class="key-fact">1~3년: 15일</span><span class="key-fact">3~5년: 17일</span><span class="key-fact">5~10년: 20일</span><span class="key-fact">10년 이상: 25일</span></div>
+                </div>
+                <div class="answer-compare">
+                    <div class="answer-box basic">
+                        <div class="answer-label">🟢 Basic RAG (8,646ms, 3,434 tokens, 정확도: 100%)</div>
+                        <div class="answer-content">제공된 문서에 따르면, TechFlow Inc.의 **연차 휴가 일수는 근속 연수에 따라 다릅니다**:
+
+| 근속 연수 | 연차 휴가 일수 |
+|----------|--------------|
+| **1년 미만** | 월 1일 (최대 11일) |
+| **1년 이상 ~ 3년 미만** | 15일 |
+| **3년 이상 ~ 5년 미만** | 17일 |
+| **5년 이상 ~ 10년 미만** | 20일 |
+| **10년 이상** | 25일 |
+
+### 추가 정보:
+- 연차 휴가는 **매년 1월 1일에 부여**됩니다
+- **입사 첫 해**에는 입사일 기준으로 월할 계산됩니다
+  - 예: 7월 1일 입사자는 해당 연도에 6일의 연차가 부여됩니다
+- 미사용 연차는 **이월 불가**하며, 12월 31일까지 사용해야 합니다
+- 퇴직 시 미사용 연차에 대해 **연차 수당이 지급**됩니다</div>
+                    </div>
+                    <div class="answer-box agent">
+                        <div class="answer-label">🔵 Agent RAG (17,387ms, 8,369 tokens, 정확도: 0%)</div>
+                        <div class="answer-content">죄송합니다. 문서에서 연차 휴가에 대한 정보를 찾을 수 없습니다. 
+
+연차 휴가 일수에 대한 정보가 포함된 문서가 현재 시스템에 없는 것으로 보입니다. 인사 규정, 취업 규칙, 또는 복리후생 관련 문서를 확인하시면 정확한 연차 휴가 일수를 확인하실 수 있을 것입니다.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="question-card">
+            <div class="question-header">
+                <div class="question-meta">
+                    <span class="question-id">Q2</span>
+                    <span class="question-level l1">Level 1</span>
+                </div>
+                <div class="question-text">FlowSync의 주요 기능 3가지는?</div>
+                <div class="question-stats">
+                    <span>Basic: 5,483ms</span>
+                    <span>Agent: 10,727ms</span>
+                </div>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="question-body">
+                <div class="answer-box expected">
+                    <div class="answer-label">📌 예상 정답</div>
+                    <div class="answer-content">1. 실시간 협업 문서(FlowDocs), 2. 스마트 태스크 관리(FlowTask), 3. 통합 파일 동기화(FlowDrive)</div>
+                    <div class="key-facts"><div class="key-facts-label">핵심 정보:</div><span class="key-fact">FlowDocs</span><span class="key-fact">FlowTask</span><span class="key-fact">FlowDrive</span></div>
+                </div>
+                <div class="answer-compare">
+                    <div class="answer-box basic">
+                        <div class="answer-label">🟢 Basic RAG (5,483ms, 7,195 tokens, 정확도: 100%)</div>
+                        <div class="answer-content">FlowSync의 주요 기능 3가지는 다음과 같습니다:
+
+1. **실시간 협업 문서 (FlowDocs)**
+   - Google Docs와 유사한 실시간 공동 편집
+   - 버전 관리 및 변경 이력 추적
+   - 마크다운 지원
+
+2. **스마트 태스크 관리 (FlowTask)**
+   - 칸반 보드 및 간트 차트 뷰
+   - 자동화된 워크플로우 설정
+   - 의존성 관리 및 마일스톤 추적
+
+3. **통합 파일 동기화 (FlowDrive)**
+   - 크로스 플랫폼 파일 동기화 (Windows, Mac, Linux, Mobile)
+   - 선택적 동기화로 저장공간 최적화
+   - 오프라인 모드 지원</div>
+                    </div>
+                    <div class="answer-box agent">
+                        <div class="answer-label">🔵 Agent RAG (10,727ms, 10,420 tokens, 정확도: 100%)</div>
+                        <div class="answer-content">검색된 문서를 바탕으로 FlowSync의 주요 기능 3가지를 답변드리겠습니다.
+
+## FlowSync의 주요 기능 3가지
+
+기능가이드 문서에 따르면, FlowSync의 핵심 기능은 다음과 같습니다:
+
+### 1. **실시간 협업 문서 (FlowDocs)**
+- Google Docs와 유사한 실시간 공동 편집
+- 버전 관리 및 변경 이력 추적
+- 마크다운 지원
+
+### 2. **스마트 태스크 관리 (FlowTask)**
+- 칸반 보드 및 간트 차트 뷰
+- 자동화된 워크플로우 설정
+- 의존성 관리 및 마일스톤 추적
+
+### 3. **통합 파일 동기화 (FlowDrive)**
+- 크로스 플랫폼 파일 동기화 (Windows, Mac, Linux, Mobile)
+- 선택적 동기화로 저장공간 최적화
+- 오프라인 모드 지원
+
+FlowSync는 이 세 가지 핵심 기능을 통해 팀 커뮤니케이션, 프로젝트 관리, 파일 공유를 하나의 도구로 통합한 올인원 협업 플랫폼입니다.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="question-card">
+            <div class="question-header">
+                <div class="question-meta">
+                    <span class="question-id">Q3</span>
+                    <span class="question-level l1">Level 1</span>
+                </div>
+                <div class="question-text">재택근무 신청 방법은?</div>
+                <div class="question-stats">
+                    <span>Basic: 12,743ms</span>
+                    <span>Agent: 9,272ms</span>
+                </div>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="question-body">
+                <div class="answer-box expected">
+                    <div class="answer-label">📌 예상 정답</div>
+                    <div class="answer-content">HR Portal(hr.techflow.kr) 접속 → 근태관리 → 재택근무 신청. 정기 재택은 월초 1~5일에 요일 지정, 수시 재택은 전일 18시까지 신청</div>
+                    <div class="key-facts"><div class="key-facts-label">핵심 정보:</div><span class="key-fact">HR Portal</span><span class="key-fact">정기 재택: 월초 1~5일</span><span class="key-fact">수시 재택: 전일 18시까지</span></div>
+                </div>
+                <div class="answer-compare">
+                    <div class="answer-box basic">
+                        <div class="answer-label">🟢 Basic RAG (12,743ms, 4,177 tokens, 정확도: 67%)</div>
+                        <div class="answer-content"># 재택근무 신청 방법
+
+TechFlow의 재택근무는 유형에 따라 신청 방법이 다릅니다.
+
+## 1. 정기 재택근무 신청 (주 2일)
+
+**신청 기간**: 매월 1일~5일 사이에 해당 월의 재택근무 요일 지정
+
+**신청 절차**:
+1. HR Portal 접속 (hr.techflow.kr)
+2. [근태관리] > [재택근무 신청] 클릭
+3. 재택근무 요일 선택 (최대 주 2일)
+4. 신청 사유 입력
+5. 팀장 승인 대기
+
+**주의사항**:
+- 팀 미팅이 있는 요일은 출근 권장
+- 부서별 최소 출근율 60% 유지 필요
+- 월요일/금요일 재택은 팀당 2명 이내
+
+## 2. 수시 재택근무 신청
+
+급하게 재택근무가 필요한 경우에 사용
+
+**신청 절차**:
+1. HR Portal 또는 모바일 앱 접속
+2. [재택근무] > [수시 신청] 선택
+3. 날짜 및 사유 입력
+4. 팀장 승인 (당일 09시까지)
+
+**제한사항**:
+- 전일 18시까지 신청 필수
+- 월 4회로 제한
+
+## 3. 풀 리모트 신청
+
+특별한 사유로 장기간 전일 재택이 필요한 경우
+
+**신청 자격**:
+- 근속 2년 이상
+- 최근 인사평가 B등급 이상
+
+**승인 절차**:
+- 팀장 → 부서장 → 인사팀장
+
+**기간**: 최대 6개월 (연장 가능)
+
+**사유**: 육아, 간병, 이사 등
+
+---
+
+**문의처**: 인사팀 근태관리 (hr@techflow.kr, 내선 1236)</div>
+                    </div>
+                    <div class="answer-box agent">
+                        <div class="answer-label">🔵 Agent RAG (9,272ms, 4,452 tokens, 정확도: 67%)</div>
+                        <div class="answer-content">재택근무 신청 방법을 안내해드리겠습니다.
+
+## 재택근무 신청 방법
+
+검색된 문서에 따르면, 재택근무 신청은 다음과 같이 진행됩니다:
+
+### 📋 정기 재택근무 신청
+1. **HR Portal 접속** (hr.techflow.kr)
+2. **[근태관리] > [재택근무 신청]** 클릭
+3. **재택근무 요일 선택** (최대 주 2일)
+4. **신청 사유 입력**
+5. **팀장 승인 대기**
+
+**주의사항:**
+- 팀 미팅이 있는 요일은 출근 권장
+- 부서별 최소 출근율(60%) 유지 필요
+- 월요일/금요일 재택은 팀당 2명 이내
+
+### 🏃 수시 재택근무 신청
+급하게 재택근무가 필요한 경우:
+1. **전일 18시까지 신청**
+2. HR Portal 또는 모바일 앱 접속
+3. [재택근무] > [수시 신청] 선택
+4. 날짜 및 사유 입력
+5. 팀장 승인 (당일 09시까지)
+- **제한**: 월 4회까지
+
+### 🏠 풀 리모트 신청
+장기간 풀 리모트가 필요한 경우:
+- **신청 자격**: 근속 2년 이상, 최근 인사평가 B등급 이상
+- **승인 절차**: 팀장 → 부서장 → 인사팀장
+- **기간**: 최대 6개월 (연장 가능)
+- **사유**: 육아, 간병, 이사 등
+
+이 정보는 '재택가이드.txt' 문서를 기반으로 작성되었습니다.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="question-card">
+            <div class="question-header">
+                <div class="question-meta">
+                    <span class="question-id">Q4</span>
+                    <span class="question-level l1">Level 1</span>
+                </div>
+                <div class="question-text">현재 FlowSync 버전은?</div>
+                <div class="question-stats">
+                    <span>Basic: 6,378ms</span>
+                    <span>Agent: 10,395ms</span>
+                </div>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="question-body">
+                <div class="answer-box expected">
+                    <div class="answer-label">📌 예상 정답</div>
+                    <div class="answer-content">v2.5.1 (2024.10.25 기준)</div>
+                    <div class="key-facts"><div class="key-facts-label">핵심 정보:</div><span class="key-fact">v2.5.1</span><span class="key-fact">2024.10.25</span></div>
+                </div>
+                <div class="answer-compare">
+                    <div class="answer-box basic">
+                        <div class="answer-label">🟢 Basic RAG (6,378ms, 8,234 tokens, 정확도: 100%)</div>
+                        <div class="answer-content">제공된 문서에 따르면, **현재 FlowSync 버전은 v2.5.1**입니다.
+
+이 버전은 **2024년 10월 25일**에 릴리스된 최신 버전(Latest)으로, 변경 이력(Changelog) 문서에 다음과 같이 명시되어 있습니다:
+
+## v2.5.1 (2024.10.25) - Latest
+
+주요 내용:
+- **버그 수정**: Windows 클라이언트 파일 동기화 문제, FlowDocs 커서 동기화, iOS 푸시 알림 문제 등 수정
+- **개선**: 대시보드 로딩 속도 15% 개선, 검색 결과 정확도 향상, 메모리 사용량 최적화</div>
+                    </div>
+                    <div class="answer-box agent">
+                        <div class="answer-label">🔵 Agent RAG (10,395ms, 10,605 tokens, 정확도: 100%)</div>
+                        <div class="answer-content">검색 결과를 바탕으로 답변드리겠습니다.
+
+**현재 FlowSync 버전은 v2.5.1입니다.**
+
+변경 이력 문서에 따르면:
+- **v2.5.1** (2024.10.25) - Latest (최신 버전)
+- 이 버전은 버그 수정 및 개선 사항을 포함하고 있습니다:
+  - Windows 클라이언트의 100MB 이상 파일 업로드 시 동기화 멈춤 문제 수정
+  - FlowDocs 공동 편집 시 커서 위치 동기화 지연 개선
+  - iOS 17.1 이상에서 푸시 알림 문제 수정
+  - 대시보드 로딩 속도 15% 개선
+
+참고로, 이전 버전인 v2.5.0은 2024년 10월 15일에 출시되었으며 대시보드 위젯 개선 및 성능 대시보드 등의 새로운 기능이 추가되었습니다.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        </div>
+    </div>
+
+    <script>
+        document.querySelectorAll('.question-header').forEach(header => {
+            header.addEventListener('click', () => {
+                header.parentElement.classList.toggle('open');
+            });
+        });
+    </script>
+</body>
+</html>
