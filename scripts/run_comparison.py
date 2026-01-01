@@ -31,9 +31,10 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from src import create_service
+from src.cost import calculate_cost, format_cost
 from tqdm import tqdm
 
-from src import create_service
 
 # =============================================================================
 # 경로 설정
@@ -91,44 +92,48 @@ def run_mode(
     for q in tqdm(questions, desc=f"{mode} 처리"):
         try:
             result = service.query(q["question"])
-            results.append({
-                "id": q["id"],
-                "level": q["level"],
-                "category": q["category"],
-                "question": q["question"],
-                "expected_answer": q.get("expected_answer", ""),
-                "key_facts": q.get("key_facts", []),
-                "documents_required": q.get("documents_required", []),
-                "answer": result.answer,
-                "input_tokens": result.input_tokens,
-                "output_tokens": result.output_tokens,
-                "latency_ms": round(result.latency_ms, 1),
-                "model": result.model,
-                # 모드별 추가 정보
-                "sources": result.sources if mode == "basic" else [],
-                "tool_calls": result.tool_calls if mode == "agent" else [],
-                "timings": result.timings if mode == "basic" else {},
-            })
+            results.append(
+                {
+                    "id": q["id"],
+                    "level": q["level"],
+                    "category": q["category"],
+                    "question": q["question"],
+                    "expected_answer": q.get("expected_answer", ""),
+                    "key_facts": q.get("key_facts", []),
+                    "documents_required": q.get("documents_required", []),
+                    "answer": result.answer,
+                    "input_tokens": result.input_tokens,
+                    "output_tokens": result.output_tokens,
+                    "latency_ms": round(result.latency_ms, 1),
+                    "model": result.model,
+                    # 모드별 추가 정보
+                    "sources": result.sources if mode == "basic" else [],
+                    "tool_calls": result.tool_calls if mode == "agent" else [],
+                    "timings": result.timings if mode == "basic" else {},
+                }
+            )
         except Exception as e:
             print(f"\n❌ 질문 {q['id']} 실패: {e}")
-            results.append({
-                "id": q["id"],
-                "level": q["level"],
-                "category": q["category"],
-                "question": q["question"],
-                "expected_answer": q.get("expected_answer", ""),
-                "key_facts": q.get("key_facts", []),
-                "documents_required": q.get("documents_required", []),
-                "answer": f"ERROR: {e}",
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "latency_ms": 0,
-                "model": "",
-                "error": str(e),
-                "sources": [],
-                "tool_calls": [],
-                "timings": {},
-            })
+            results.append(
+                {
+                    "id": q["id"],
+                    "level": q["level"],
+                    "category": q["category"],
+                    "question": q["question"],
+                    "expected_answer": q.get("expected_answer", ""),
+                    "key_facts": q.get("key_facts", []),
+                    "documents_required": q.get("documents_required", []),
+                    "answer": f"ERROR: {e}",
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "latency_ms": 0,
+                    "model": "",
+                    "error": str(e),
+                    "sources": [],
+                    "tool_calls": [],
+                    "timings": {},
+                }
+            )
 
     return results
 
@@ -193,27 +198,29 @@ def merge_results(basic_results: list[dict], agent_results: list[dict]) -> list[
         q_id = b["id"]
         a = agent_by_id.get(q_id, {})
 
-        merged.append({
-            "id": q_id,
-            "level": b["level"],
-            "category": b["category"],
-            "question": b["question"],
-            "expected_answer": b.get("expected_answer", ""),
-            "key_facts": b.get("key_facts", []),
-            # Basic 결과
-            "answer_basic": b["answer"],
-            "latency_basic_ms": b["latency_ms"],
-            "tokens_basic": b["input_tokens"] + b["output_tokens"],
-            "sources_basic": b.get("sources", []),
-            # Agent 결과
-            "answer_agent": a.get("answer", "N/A"),
-            "latency_agent_ms": a.get("latency_ms", 0),
-            "tokens_agent": a.get("input_tokens", 0) + a.get("output_tokens", 0),
-            "tool_calls": a.get("tool_calls", []),
-            # 평가 (수동 입력용)
-            "winner": "",
-            "notes": "",
-        })
+        merged.append(
+            {
+                "id": q_id,
+                "level": b["level"],
+                "category": b["category"],
+                "question": b["question"],
+                "expected_answer": b.get("expected_answer", ""),
+                "key_facts": b.get("key_facts", []),
+                # Basic 결과
+                "answer_basic": b["answer"],
+                "latency_basic_ms": b["latency_ms"],
+                "tokens_basic": b["input_tokens"] + b["output_tokens"],
+                "sources_basic": b.get("sources", []),
+                # Agent 결과
+                "answer_agent": a.get("answer", "N/A"),
+                "latency_agent_ms": a.get("latency_ms", 0),
+                "tokens_agent": a.get("input_tokens", 0) + a.get("output_tokens", 0),
+                "tool_calls": a.get("tool_calls", []),
+                # 평가 (수동 입력용)
+                "winner": "",
+                "notes": "",
+            }
+        )
 
     return merged
 
@@ -226,12 +233,31 @@ def calculate_comparison_stats(merged: list[dict]) -> dict:
     basic_tokens = sum(m["tokens_basic"] for m in merged)
     agent_tokens = sum(m["tokens_agent"] for m in merged)
 
+    # 비용 계산
+    basic_input = sum(m.get("input_basic", 0) for m in merged)
+    basic_output = sum(m.get("output_basic", 0) for m in merged)
+    agent_input = sum(m.get("input_agent", 0) for m in merged)
+    agent_output = sum(m.get("output_agent", 0) for m in merged)
+
+    # tokens_basic/agent에서 대략 추정 (input:output = 9:1 가정)
+    if basic_input == 0 and basic_tokens > 0:
+        basic_input = int(basic_tokens * 0.9)
+        basic_output = basic_tokens - basic_input
+    if agent_input == 0 and agent_tokens > 0:
+        agent_input = int(agent_tokens * 0.9)
+        agent_output = agent_tokens - agent_input
+
+    basic_cost = calculate_cost(basic_input, basic_output)
+    agent_cost = calculate_cost(agent_input, agent_output)
+
     # 레벨별 비교
-    by_level = defaultdict(lambda: {
-        "count": 0,
-        "basic_latencies": [],
-        "agent_latencies": [],
-    })
+    by_level = defaultdict(
+        lambda: {
+            "count": 0,
+            "basic_latencies": [],
+            "agent_latencies": [],
+        }
+    )
     for m in merged:
         level = m["level"]
         by_level[level]["count"] += 1
@@ -256,17 +282,23 @@ def calculate_comparison_stats(merged: list[dict]) -> dict:
         "basic": {
             "avg_latency_ms": round(sum(basic_latencies) / len(basic_latencies), 1) if basic_latencies else 0,
             "total_tokens": basic_tokens,
+            "cost_usd": round(basic_cost["total_usd"], 4),
+            "cost_krw": round(basic_cost["total_krw"], 0),
         },
         "agent": {
             "avg_latency_ms": round(sum(agent_latencies) / len(agent_latencies), 1) if agent_latencies else 0,
             "total_tokens": agent_tokens,
+            "cost_usd": round(agent_cost["total_usd"], 4),
+            "cost_krw": round(agent_cost["total_krw"], 0),
         },
         "latency_diff_ms": round(
-            (sum(agent_latencies) / len(agent_latencies) if agent_latencies else 0) -
-            (sum(basic_latencies) / len(basic_latencies) if basic_latencies else 0),
-            1
+            (sum(agent_latencies) / len(agent_latencies) if agent_latencies else 0)
+            - (sum(basic_latencies) / len(basic_latencies) if basic_latencies else 0),
+            1,
         ),
         "token_diff": agent_tokens - basic_tokens,
+        "cost_diff_usd": round(agent_cost["total_usd"] - basic_cost["total_usd"], 4),
+        "cost_diff_krw": round(agent_cost["total_krw"] - basic_cost["total_krw"], 0),
         "by_level": level_stats,
     }
 
@@ -349,8 +381,18 @@ def print_comparison_summary(merged: list[dict]) -> None:
     print("├──────────────────────────────────────────────────────────────────┤")
     print(f"│  {'항목':<20} {'Basic':>15} {'Agent':>15} {'차이':>12} │")
     print("├──────────────────────────────────────────────────────────────────┤")
-    print(f"│  {'평균 레이턴시 (ms)':<20} {stats['basic']['avg_latency_ms']:>15,.1f} {stats['agent']['avg_latency_ms']:>15,.1f} {stats['latency_diff_ms']:>+12,.1f} │")
-    print(f"│  {'총 토큰':<20} {stats['basic']['total_tokens']:>15,} {stats['agent']['total_tokens']:>15,} {stats['token_diff']:>+12,} │")
+    print(
+        f"│  {'평균 레이턴시 (ms)':<20} {stats['basic']['avg_latency_ms']:>15,.1f} {stats['agent']['avg_latency_ms']:>15,.1f} {stats['latency_diff_ms']:>+12,.1f} │"
+    )
+    print(
+        f"│  {'총 토큰':<20} {stats['basic']['total_tokens']:>15,} {stats['agent']['total_tokens']:>15,} {stats['token_diff']:>+12,} │"
+    )
+    print(
+        f"│  {'비용 (USD)':<20} {'$' + format(stats['basic']['cost_usd'], '.4f'):>15} {'$' + format(stats['agent']['cost_usd'], '.4f'):>15} {'$' + format(stats['cost_diff_usd'], '+.4f'):>12} │"
+    )
+    print(
+        f"│  {'비용 (KRW)':<20} {'₩' + format(int(stats['basic']['cost_krw']), ','):>15} {'₩' + format(int(stats['agent']['cost_krw']), ','):>15} {'₩' + format(int(stats['cost_diff_krw']), '+,'):>12} │"
+    )
     print("└──────────────────────────────────────────────────────────────────┘")
 
     print("\n레벨별 레이턴시 비교:")
@@ -454,27 +496,39 @@ def generate_comparison_report(
         <div class="stats-grid">
             <div class="stat-card basic">
                 <div class="stat-label">Basic 평균 레이턴시</div>
-                <div class="stat-value">{stats['basic']['avg_latency_ms']:,.0f}<span class="stat-unit">ms</span></div>
+                <div class="stat-value">{stats["basic"]["avg_latency_ms"]:,.0f}<span class="stat-unit">ms</span></div>
             </div>
             <div class="stat-card agent">
                 <div class="stat-label">Agent 평균 레이턴시</div>
-                <div class="stat-value">{stats['agent']['avg_latency_ms']:,.0f}<span class="stat-unit">ms</span></div>
+                <div class="stat-value">{stats["agent"]["avg_latency_ms"]:,.0f}<span class="stat-unit">ms</span></div>
             </div>
             <div class="stat-card diff">
                 <div class="stat-label">레이턴시 차이</div>
-                <div class="stat-value">{stats['latency_diff_ms']:+,.0f}<span class="stat-unit">ms</span></div>
+                <div class="stat-value">{stats["latency_diff_ms"]:+,.0f}<span class="stat-unit">ms</span></div>
             </div>
             <div class="stat-card basic">
                 <div class="stat-label">Basic 총 토큰</div>
-                <div class="stat-value">{stats['basic']['total_tokens']:,}</div>
+                <div class="stat-value">{stats["basic"]["total_tokens"]:,}</div>
             </div>
             <div class="stat-card agent">
                 <div class="stat-label">Agent 총 토큰</div>
-                <div class="stat-value">{stats['agent']['total_tokens']:,}</div>
+                <div class="stat-value">{stats["agent"]["total_tokens"]:,}</div>
             </div>
             <div class="stat-card diff">
                 <div class="stat-label">토큰 차이</div>
-                <div class="stat-value">{stats['token_diff']:+,}</div>
+                <div class="stat-value">{stats["token_diff"]:+,}</div>
+            </div>
+            <div class="stat-card basic">
+                <div class="stat-label">Basic 비용</div>
+                <div class="stat-value">${stats["basic"]["cost_usd"]:.4f}<span class="stat-unit"> (₩{int(stats["basic"]["cost_krw"]):,})</span></div>
+            </div>
+            <div class="stat-card agent">
+                <div class="stat-label">Agent 비용</div>
+                <div class="stat-value">${stats["agent"]["cost_usd"]:.4f}<span class="stat-unit"> (₩{int(stats["agent"]["cost_krw"]):,})</span></div>
+            </div>
+            <div class="stat-card diff">
+                <div class="stat-label">비용 차이</div>
+                <div class="stat-value">${stats["cost_diff_usd"]:+.4f}<span class="stat-unit"> (₩{int(stats["cost_diff_krw"]):+,})</span></div>
             </div>
         </div>
 
@@ -523,11 +577,11 @@ def generate_level_bars(stats: dict) -> str:
             <div class="level-label">Level {level}</div>
             <div class="level-bars">
                 <div class="bar-container">
-                    <div class="bar basic" style="width: {basic_width}%">{data['basic_avg_latency_ms']:,.0f}ms</div>
+                    <div class="bar basic" style="width: {basic_width}%">{data["basic_avg_latency_ms"]:,.0f}ms</div>
                     <span class="bar-label">Basic</span>
                 </div>
                 <div class="bar-container">
-                    <div class="bar agent" style="width: {agent_width}%">{data['agent_avg_latency_ms']:,.0f}ms</div>
+                    <div class="bar agent" style="width: {agent_width}%">{data["agent_avg_latency_ms"]:,.0f}ms</div>
                     <span class="bar-label">Agent</span>
                 </div>
             </div>
@@ -551,30 +605,30 @@ def generate_question_cards(merged: list[dict]) -> str:
         <div class="question-card">
             <div class="question-header">
                 <div class="question-meta">
-                    <span class="question-id">Q{m['id']}</span>
-                    <span class="question-level {level_class}">Level {m['level']}</span>
+                    <span class="question-id">Q{m["id"]}</span>
+                    <span class="question-level {level_class}">Level {m["level"]}</span>
                 </div>
-                <div class="question-text">{m['question']}</div>
+                <div class="question-text">{m["question"]}</div>
                 <div class="question-stats">
-                    <span>Basic: {m['latency_basic_ms']:,.0f}ms</span>
-                    <span>Agent: {m['latency_agent_ms']:,.0f}ms</span>
+                    <span>Basic: {m["latency_basic_ms"]:,.0f}ms</span>
+                    <span>Agent: {m["latency_agent_ms"]:,.0f}ms</span>
                 </div>
                 <span class="toggle-icon">▼</span>
             </div>
             <div class="question-body">
                 <div class="answer-box expected">
                     <div class="answer-label">📌 예상 정답</div>
-                    <div class="answer-content">{m['expected_answer']}</div>
+                    <div class="answer-content">{m["expected_answer"]}</div>
                     {key_facts_html}
                 </div>
                 <div class="answer-compare">
                     <div class="answer-box basic">
-                        <div class="answer-label">🟢 Basic RAG ({m['latency_basic_ms']:,.0f}ms, {m['tokens_basic']:,} tokens)</div>
-                        <div class="answer-content">{m['answer_basic']}</div>
+                        <div class="answer-label">🟢 Basic RAG ({m["latency_basic_ms"]:,.0f}ms, {m["tokens_basic"]:,} tokens)</div>
+                        <div class="answer-content">{m["answer_basic"]}</div>
                     </div>
                     <div class="answer-box agent">
-                        <div class="answer-label">🔵 Agent RAG ({m['latency_agent_ms']:,.0f}ms, {m['tokens_agent']:,} tokens)</div>
-                        <div class="answer-content">{m['answer_agent']}</div>
+                        <div class="answer-label">🔵 Agent RAG ({m["latency_agent_ms"]:,.0f}ms, {m["tokens_agent"]:,} tokens)</div>
+                        <div class="answer-content">{m["answer_agent"]}</div>
                     </div>
                 </div>
             </div>
