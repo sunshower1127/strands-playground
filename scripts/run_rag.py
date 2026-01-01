@@ -334,6 +334,7 @@ def main():
                 "input_tokens": result.input_tokens,
                 "output_tokens": result.output_tokens,
                 "latency_ms": round(result.latency_ms, 1),
+                "timings": result.timings,
                 "model": result.model,
             })
         except Exception as e:
@@ -351,6 +352,7 @@ def main():
                 "input_tokens": 0,
                 "output_tokens": 0,
                 "latency_ms": 0,
+                "timings": {},
                 "model": "",
                 "error": str(e),
             })
@@ -359,6 +361,11 @@ def main():
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_path = save_results(results, config, run_id)
     print(f"\n💾 결과 저장: {output_path}")
+
+    # HTML 리포트 생성
+    from scripts.generate_report import generate_html_report
+    html_path = generate_html_report(output_path)
+    print(f"📊 리포트 생성: {html_path}")
 
     # 요약 출력
     print_summary(results, config)

@@ -15,6 +15,7 @@ class RAGResult:
         output_tokens: LLM 출력 토큰 수
         latency_ms: 전체 파이프라인 소요 시간 (밀리초)
         model: 사용된 LLM 모델명
+        timings: 단계별 소요 시간 (밀리초) {"embedding": 100.5, "search": 50.2, ...}
     """
 
     question: str
@@ -24,6 +25,7 @@ class RAGResult:
     output_tokens: int = 0
     latency_ms: float = 0.0
     model: str = ""
+    timings: dict[str, float] = field(default_factory=dict)
 
     @property
     def source_count(self) -> int:

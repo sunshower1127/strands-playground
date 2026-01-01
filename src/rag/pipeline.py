@@ -121,22 +121,33 @@ class RAGPipeline:
             history: 대화 히스토리 (선택) - [{"role": "user"|"assistant", "content": "..."}]
 
         Returns:
-            RAGResult: 답변, 출처, 토큰 수, 레이턴시 등
+            RAGResult: 답변, 출처, 토큰 수, 레이턴시, 단계별 타이밍 등
         """
         start = time.time()
+        timings: dict[str, float] = {}
+
+        def _measure(name: str):
+            """단계별 시간 측정 헬퍼"""
+            nonlocal start
+            now = time.time()
+            timings[name] = round((now - start) * 1000, 1)
+            start = now
 
         # 1. 쿼리 개선 (선택) - 대화 히스토리 기반
         enhanced = question
         if self.query_enhancer:
             enhanced = self.query_enhancer.enhance(question, history)
+            _measure("query_enhance")
 
         # 2. 전처리 (선택)
         processed = enhanced
         if self.preprocessor:
             processed = self.preprocessor.process(enhanced)
+            _measure("preprocess")
 
         # 3. 임베딩 생성
         embedding = self.embedding_client.embed(processed)
+        _measure("embedding")
 
         # 4. 검색 쿼리 생성
         search_query = self.query_builder.build(
@@ -145,28 +156,36 @@ class RAGPipeline:
             project_id=self.project_id,
             k=self.search_size,
         )
+        _measure("query_build")
 
         # 5. 검색 실행
         results = self._search(search_query)
+        _measure("search")
 
         # 6. 결과 필터링 (선택)
         if self.result_filter:
             results = self.result_filter.filter(processed, results)
+            _measure("filter")
 
         # 7. 청크 확장 (선택)
         if self.chunk_expander:
             results = self.chunk_expander.expand(results)
+            _measure("chunk_expand")
 
         # 8. 컨텍스트 생성
         context = self.context_builder.build(results)
+        _measure("context_build")
 
         # 9. 프롬프트 생성
         system_prompt, user_prompt = self.prompt_template.render(context, question)
+        _measure("prompt_render")
 
         # 10. LLM 호출
         response = self.llm_client.call(user_prompt, system=system_prompt)
+        _measure("llm")
 
-        elapsed = (time.time() - start) * 1000
+        # 전체 소요 시간
+        total_ms = sum(timings.values())
 
         return RAGResult(
             question=question,
@@ -174,8 +193,9 @@ class RAGPipeline:
             sources=results,
             input_tokens=response.input_tokens,
             output_tokens=response.output_tokens,
-            latency_ms=elapsed,
+            latency_ms=round(total_ms, 1),
             model=response.model,
+            timings=timings,
         )
 
     def _search(self, query: dict) -> list[dict]:

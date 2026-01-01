@@ -3,7 +3,7 @@
 ## 상태: 완료 ✅
 
 ## 목표
-질문셋 전체 실행 및 결과 저장
+질문셋 전체 실행, 결과 저장, HTML 리포트 생성
 
 ---
 
@@ -16,7 +16,19 @@
 - 질문셋 로드 및 필터링
 - 파이프라인 선택 (minimal/standard/full)
 - 결과 저장 (JSON)
+- 단계별 타이밍 측정
+- HTML 리포트 자동 생성
 - 통계 출력
+```
+
+### 리포트 생성기 (`scripts/generate_report.py`)
+
+```python
+# 주요 기능
+- JSON 결과 → HTML 리포트 변환
+- 요약 통계 카드
+- 단계별 타이밍 바 차트
+- 질문별 상세 (예상 정답 vs 실제 답변 비교)
 ```
 
 ---
@@ -43,6 +55,9 @@ uv run python scripts/run_rag.py --dry-run
 
 # 프로젝트 ID 지정
 uv run python scripts/run_rag.py --project-id 334
+
+# 리포트만 재생성
+uv run python scripts/generate_report.py data/results/*.json
 ```
 
 ---
@@ -51,16 +66,12 @@ uv run python scripts/run_rag.py --project-id 334
 
 ```json
 {
-  "run_id": "20260101_133815",
+  "run_id": "20260101_175906",
   "config": {
     "name": "minimal",
     "preprocessor": null,
     "query_builder": "KNNQueryBuilder",
-    "result_filter": null,
-    "context_builder": "SimpleContextBuilder",
-    "prompt_template": "SimplePromptTemplate",
-    "search_size": 5,
-    "search_pipeline": null
+    "search_size": 5
   },
   "results": [
     {
@@ -68,26 +79,26 @@ uv run python scripts/run_rag.py --project-id 334
       "level": 1,
       "category": "single_retrieval",
       "question": "연차 휴가는 며칠인가?",
-      "answer": "연차 휴가는 입사 1년차 15일...",
+      "expected_answer": "근속 연수에 따라 다름: 1년 미만 월 1일...",
+      "key_facts": ["1년 미만: 월 1일", "1~3년: 15일", ...],
+      "documents_required": ["휴가정책.txt"],
+      "answer": "제공된 문서에 따르면...",
       "sources": [{"file_name": "휴가정책.txt", "score": 0.54}],
       "input_tokens": 3063,
-      "output_tokens": 348,
-      "latency_ms": 8149.7,
+      "output_tokens": 357,
+      "latency_ms": 7445.8,
+      "timings": {
+        "embedding": 1036.2,
+        "query_build": 0.0,
+        "search": 169.2,
+        "context_build": 0.0,
+        "prompt_render": 0.0,
+        "llm": 7212.4
+      },
       "model": "claude-sonnet-4-5-20250929"
     }
   ],
-  "summary": {
-    "total_questions": 1,
-    "avg_latency_ms": 8149.7,
-    "min_latency_ms": 8149.7,
-    "max_latency_ms": 8149.7,
-    "total_input_tokens": 3063,
-    "total_output_tokens": 348,
-    "total_tokens": 3411,
-    "by_level": {
-      "1": {"count": 1, "avg_latency_ms": 8149.7}
-    }
-  }
+  "summary": {...}
 }
 ```
 
@@ -99,26 +110,39 @@ uv run python scripts/run_rag.py --project-id 334
 🚀 파이프라인 생성 중... (minimal)
 📝 1개 질문 실행 예정
 
-질문 처리: 100%|██████████| 1/1 [00:08<00:00,  8.15s/it]
+질문 처리: 100%|██████████| 1/1 [00:07<00:00,  7.45s/it]
 
-💾 결과 저장: data/results/20260101_133815_minimal.json
+💾 결과 저장: data/results/20260101_175906_minimal.json
+📊 리포트 생성: data/results/20260101_175906_minimal.html
 
 ============================================================
 📊 실행 결과 요약 (minimal pipeline)
 ============================================================
 
 총 질문 수: 1
-평균 레이턴시: 8149.7ms
-최소/최대: 8149.7ms / 8149.7ms
+평균 레이턴시: 7445.8ms
+최소/최대: 7445.8ms / 7445.8ms
 
-총 토큰: 3,411
+총 토큰: 3,420
   - 입력: 3,063
-  - 출력: 348
+  - 출력: 357
 
 레벨별 통계:
-  Level 1: 1개, 평균 8149.7ms
+  Level 1: 1개, 평균 7445.8ms
 ============================================================
 ```
+
+---
+
+## HTML 리포트 기능
+
+- **요약 카드**: 총 질문 수, 평균 레이턴시, 토큰 사용량, 모델
+- **타이밍 분석**: 단계별 소요시간 바 차트 (embedding, search, llm 등)
+- **질문별 상세**: 접기/펼치기 가능한 카드
+  - 예상 정답 vs 실제 답변 비교
+  - key_facts 태그 표시
+  - 소스 문서 목록
+  - 단계별 타이밍 상세
 
 ---
 
@@ -126,18 +150,22 @@ uv run python scripts/run_rag.py --project-id 334
 
 ```
 scripts/
-└── run_rag.py           # 테스트 러너
+├── run_rag.py           # 테스트 러너
+└── generate_report.py   # HTML 리포트 생성기
 
 data/
 ├── questions/
-│   └── question_set.json  # 18개 질문 (Level 1-4)
+│   └── question_set.json  # 18개 질문 (Level 1-4) + 정답
 └── results/
-    └── {timestamp}_{pipeline}.json  # 실행 결과
+    ├── {timestamp}_{pipeline}.json  # 실행 결과
+    └── {timestamp}_{pipeline}.html  # HTML 리포트
 ```
 
 ---
 
 ## 주요 함수
+
+### run_rag.py
 
 | 함수 | 설명 |
 |------|------|
@@ -147,6 +175,16 @@ data/
 | `save_results()` | JSON 결과 저장 |
 | `calculate_summary()` | 통계 계산 |
 | `print_summary()` | 결과 요약 출력 |
+
+### generate_report.py
+
+| 함수 | 설명 |
+|------|------|
+| `generate_html_report()` | JSON → HTML 변환 |
+| `render_header()` | 헤더 섹션 렌더링 |
+| `render_summary()` | 요약 카드 렌더링 |
+| `render_timing_analysis()` | 타이밍 바 차트 렌더링 |
+| `render_questions()` | 질문별 상세 렌더링 |
 
 ---
 
@@ -159,11 +197,14 @@ data/
 - [x] 질문 필터링 (--questions, --level)
 - [x] 실행 테스트 확인
 - [x] 결과 파일 확인
+- [x] 정답 포함 (expected_answer, key_facts)
+- [x] 단계별 타이밍 측정 (timings)
+- [x] HTML 리포트 자동 생성
 
 ---
 
 ## 향후 계획
 
 - [ ] 결과 비교 스크립트 (`compare_runs.py`)
-- [ ] LLM 기반 자동 평가
+- [ ] LLM 기반 자동 평가 (정답 유사도 채점)
 - [ ] 파이프라인 간 A/B 테스트
