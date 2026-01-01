@@ -203,6 +203,33 @@ print(result.answer)
 
 ---
 
+## 10. 문제 해결
+
+### 토큰 누적 버그
+
+**문제**: 질문마다 토큰이 기하급수적으로 증가 (Q1: 8K → Q13: 1.3M 토큰)
+
+**원인**: `AgentRAGService`에서 Agent 인스턴스를 재사용하여 대화 히스토리가 누적됨. Strands Agent는 기본적으로 `SlidingWindowConversationManager`를 사용하여 대화 히스토리를 유지.
+
+**해결**: 매 쿼리마다 새 Agent 생성 (stateless)
+
+```python
+# src/agent/service.py
+def query(self, question: str) -> ServiceResult:
+    # 매번 새 Agent 생성 (stateless)
+    agent = AgentRAG(project_id=self.project_id)
+    result = agent.query(question)
+    return ServiceResult(...)
+```
+
+**대안**:
+- `agent.agent.messages = []`로 수동 초기화
+- `NullConversationManager` 사용
+
+**참고**: [Issue #329: reset() method 요청](https://github.com/strands-agents/sdk-python/issues/329)
+
+---
+
 ## 향후 개선
 
 ### Context Awareness Gate (CAG)

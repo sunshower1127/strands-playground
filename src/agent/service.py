@@ -19,6 +19,7 @@ class AgentRAGService(RAGServiceBase):
     """Agent RAG 서비스
 
     Strands Agent가 검색 도구를 자율적으로 호출하여 질문에 답변합니다.
+    매 쿼리마다 새 Agent를 생성하여 대화 히스토리가 누적되지 않습니다.
     """
 
     def __init__(self, project_id: int = 334):
@@ -27,17 +28,13 @@ class AgentRAGService(RAGServiceBase):
             project_id: 프로젝트 ID (검색 필터용)
         """
         self.project_id = project_id
-        self._agent: AgentRAG | None = None
-
-    @property
-    def agent(self) -> AgentRAG:
-        """Agent (lazy init)"""
-        if self._agent is None:
-            self._agent = AgentRAG(project_id=self.project_id)
-        return self._agent
 
     def query(self, question: str) -> ServiceResult:
         """질문에 대한 Agent RAG 실행
+
+        매번 새 Agent를 생성하여 stateless하게 동작합니다.
+        (Strands Agent는 기본적으로 대화 히스토리를 유지하므로
+        재사용 시 토큰이 기하급수적으로 증가함)
 
         Args:
             question: 사용자 질문
@@ -45,7 +42,9 @@ class AgentRAGService(RAGServiceBase):
         Returns:
             ServiceResult: 통합 결과
         """
-        result = self.agent.query(question)
+        # 매번 새 Agent 생성 (stateless)
+        agent = AgentRAG(project_id=self.project_id)
+        result = agent.query(question)
 
         return ServiceResult(
             mode="agent",
