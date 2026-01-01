@@ -10,6 +10,7 @@ Usage:
     result = agent_rag.query("연차 휴가는 며칠인가요?")
 """
 
+import logging
 import os
 import time
 from dataclasses import dataclass, field
@@ -18,8 +19,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 from strands import Agent
 from strands.models.litellm import LiteLLMModel
+from strands.types.exceptions import MaxTokensReachedException
 
-from .tools.search import search_documents
+from .tools.search import clear_sources, get_call_history, get_last_sources, search_documents
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -47,6 +51,9 @@ class AgentRAGResult:
         output_tokens: LLM 출력 토큰 수
         latency_ms: 전체 파이프라인 소요 시간 (밀리초)
         model: 사용된 LLM 모델명
+        sources: 검색된 소스 목록 [{"file_name": str, "score": float, "query": str}, ...]
+        timings: 단계별 타이밍 {"total": float, "tool_calls": float, "llm": float}
+        call_history: 도구 호출 이력 [{"call_index": int, "tool": str, "query": str, ...}, ...]
     """
 
     question: str
@@ -57,6 +64,9 @@ class AgentRAGResult:
     output_tokens: int = 0
     latency_ms: float = 0.0
     model: str = ""
+    sources: list[dict] = field(default_factory=list)
+    timings: dict[str, float] = field(default_factory=dict)
+    call_history: list[dict] = field(default_factory=list)
 
     @property
     def total_tokens(self) -> int:
@@ -118,7 +128,7 @@ class AgentRAG:
             params={
                 "vertex_project": os.getenv("GCP_PROJECT_ID"),
                 "vertex_location": os.getenv("GCP_REGION", "us-east5"),
-                "max_tokens": 1024,
+                "max_tokens": 2048,
             },
         )
 
@@ -140,52 +150,98 @@ class AgentRAG:
         """
         start = time.time()
 
-        # Agent 호출 - 반환 타입: AgentResult
-        # AgentResult 필드: stop_reason, message, metrics, state, interrupts, structured_output
-        result = self.agent(question)
+        # 검색 결과 초기화
+        clear_sources()
 
-        elapsed_ms = (time.time() - start) * 1000
+        try:
+            # Agent 호출 - 반환 타입: AgentResult
+            # AgentResult 필드: stop_reason, message, metrics, state, interrupts, structured_output
+            result = self.agent(question)
 
-        # 도구 호출 정보 추출 (metrics.tool_metrics에서)
-        # ToolMetrics 필드: tool, call_count, success_count, error_count, total_time
-        tool_calls = []
-        if result.metrics and result.metrics.tool_metrics:
-            for tool_name, tool_metric in result.metrics.tool_metrics.items():
-                tool_calls.append({
-                    "name": tool_name,
-                    "count": tool_metric.call_count,
-                    "success": tool_metric.success_count,
-                    "error": tool_metric.error_count,
-                })
+            elapsed_ms = (time.time() - start) * 1000
 
-        # 토큰 사용량 추출 (metrics.accumulated_usage에서)
-        # Usage: {"inputTokens": int, "outputTokens": int, "totalTokens": int}
-        input_tokens = 0
-        output_tokens = 0
-        if result.metrics and result.metrics.accumulated_usage:
-            usage = result.metrics.accumulated_usage
-            input_tokens = usage.get("inputTokens", 0)
-            output_tokens = usage.get("outputTokens", 0)
+            # 검색 결과 및 호출 이력 수집
+            sources = get_last_sources()
+            call_history = get_call_history()
 
-        # 답변 텍스트 추출 (message.content에서)
-        # Message는 {"role": str, "content": [{"text": "..."}, ...]} 형태
-        answer = ""
-        if result.message:
-            content_blocks = result.message.get("content", [])
-            for block in content_blocks:
-                if isinstance(block, dict) and "text" in block:
-                    answer += block["text"]
+            # 도구 호출 정보 추출 (metrics.tool_metrics에서)
+            # ToolMetrics 필드: tool, call_count, success_count, error_count, total_time
+            tool_calls = []
+            tool_time_ms = 0.0
+            if result.metrics and result.metrics.tool_metrics:
+                for tool_name, tool_metric in result.metrics.tool_metrics.items():
+                    tool_calls.append({
+                        "name": tool_name,
+                        "count": tool_metric.call_count,
+                        "success": tool_metric.success_count,
+                        "error": tool_metric.error_count,
+                    })
+                    # 도구 호출 시간 추출
+                    if hasattr(tool_metric, "total_time") and tool_metric.total_time:
+                        tool_time_ms += tool_metric.total_time * 1000
 
-        return AgentRAGResult(
-            question=question,
-            answer=answer,
-            tool_calls=tool_calls,
-            tool_call_count=len(tool_calls),
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            latency_ms=round(elapsed_ms, 1),
-            model=self.model_id,
-        )
+            # 타이밍 계산
+            timings = {
+                "total": round(elapsed_ms, 1),
+                "tool_calls": round(tool_time_ms, 1),
+                "llm": round(max(0, elapsed_ms - tool_time_ms), 1),
+            }
+
+            # 토큰 사용량 추출 (metrics.accumulated_usage에서)
+            # Usage: {"inputTokens": int, "outputTokens": int, "totalTokens": int}
+            input_tokens = 0
+            output_tokens = 0
+            if result.metrics and result.metrics.accumulated_usage:
+                usage = result.metrics.accumulated_usage
+                input_tokens = usage.get("inputTokens", 0)
+                output_tokens = usage.get("outputTokens", 0)
+                total_used = input_tokens + output_tokens
+                logger.debug(f"Token usage: {total_used} (input={input_tokens}, output={output_tokens})")
+
+            # 답변 텍스트 추출 (message.content에서)
+            # Message는 {"role": str, "content": [{"text": "..."}, ...]} 형태
+            answer = ""
+            if result.message:
+                content_blocks = result.message.get("content", [])
+                for block in content_blocks:
+                    if isinstance(block, dict) and "text" in block:
+                        answer += block["text"]
+
+            return AgentRAGResult(
+                question=question,
+                answer=answer,
+                tool_calls=tool_calls,
+                tool_call_count=len(tool_calls),
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                latency_ms=round(elapsed_ms, 1),
+                model=self.model_id,
+                sources=sources,
+                timings=timings,
+                call_history=call_history,
+            )
+
+        except MaxTokensReachedException as e:
+            elapsed_ms = (time.time() - start) * 1000
+            sources = get_last_sources()
+            call_history = get_call_history()
+
+            logger.warning(f"MaxTokensReachedException: {question[:50]}...")
+            logger.warning(f"Sources before error: {len(sources)}")
+
+            return AgentRAGResult(
+                question=question,
+                answer=f"ERROR: {e!s}",
+                tool_calls=[],
+                tool_call_count=0,
+                input_tokens=0,
+                output_tokens=0,
+                latency_ms=round(elapsed_ms, 1),
+                model=self.model_id,
+                sources=sources,
+                timings={"total": round(elapsed_ms, 1), "error": "max_tokens"},
+                call_history=call_history,
+            )
 
 
 # =============================================================================

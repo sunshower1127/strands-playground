@@ -24,6 +24,7 @@ class ServiceResult:
         sources: 검색된 소스 (Basic 모드)
         tool_calls: 도구 호출 정보 (Agent 모드)
         timings: 단계별 타이밍 (Basic 모드)
+        call_history: 도구 호출 상세 이력 (Agent 모드)
     """
 
     mode: str
@@ -36,6 +37,7 @@ class ServiceResult:
     sources: list[dict] = field(default_factory=list)
     tool_calls: list[dict] = field(default_factory=list)
     timings: dict[str, float] = field(default_factory=dict)
+    call_history: list[dict] = field(default_factory=list)
 
     @property
     def total_tokens(self) -> int:

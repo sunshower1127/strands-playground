@@ -55,4 +55,7 @@ class AgentRAGService(RAGServiceBase):
             latency_ms=result.latency_ms,
             model=result.model,
             tool_calls=result.tool_calls,
+            sources=result.sources,
+            timings=result.timings,
+            call_history=result.call_history,
         )

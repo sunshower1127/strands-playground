@@ -22,6 +22,7 @@ Usage:
 
 import argparse
 import json
+import re
 import sys
 from collections import defaultdict
 from datetime import datetime
@@ -34,6 +35,54 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src import create_service
 from src.cost import calculate_cost, format_cost
 from tqdm import tqdm
+
+
+# =============================================================================
+# Key Facts 자동 매칭
+# =============================================================================
+
+
+def check_key_facts(answer: str, key_facts: list[str]) -> dict:
+    """답변에서 key_facts 포함 여부 체크
+
+    Args:
+        answer: 생성된 답변
+        key_facts: 정답에 포함되어야 할 핵심 사실 리스트
+
+    Returns:
+        dict: matched(매칭된 facts), missed(누락된 facts), accuracy(정확도)
+    """
+    if not key_facts:
+        return {"matched": [], "missed": [], "accuracy": 1.0}
+    if not answer:
+        return {"matched": [], "missed": key_facts, "accuracy": 0.0}
+
+    answer_lower = answer.lower()
+    matched = []
+    missed = []
+
+    for fact in key_facts:
+        fact_lower = fact.lower()
+        # 핵심 키워드 추출 (숫자, 한글 단어)
+        keywords = re.findall(r"[\d]+|[가-힣]+", fact_lower)
+        # 의미 있는 키워드만 필터 (2자 이상)
+        meaningful_keywords = [kw for kw in keywords if len(kw) > 1]
+
+        if not meaningful_keywords:
+            # 키워드가 없으면 전체 문자열 포함 여부 체크
+            if fact_lower in answer_lower:
+                matched.append(fact)
+            else:
+                missed.append(fact)
+        else:
+            # 모든 키워드가 답변에 포함되면 매칭
+            if all(kw in answer_lower for kw in meaningful_keywords):
+                matched.append(fact)
+            else:
+                missed.append(fact)
+
+    accuracy = len(matched) / len(key_facts)
+    return {"matched": matched, "missed": missed, "accuracy": round(accuracy, 4)}
 
 
 # =============================================================================
@@ -106,10 +155,12 @@ def run_mode(
                     "output_tokens": result.output_tokens,
                     "latency_ms": round(result.latency_ms, 1),
                     "model": result.model,
-                    # 모드별 추가 정보
-                    "sources": result.sources if mode == "basic" else [],
+                    # 모드 공통 정보
+                    "sources": result.sources,
+                    "timings": result.timings,
+                    # Agent 모드 전용
                     "tool_calls": result.tool_calls if mode == "agent" else [],
-                    "timings": result.timings if mode == "basic" else {},
+                    "call_history": result.call_history if mode == "agent" else [],
                 }
             )
         except Exception as e:
@@ -131,6 +182,7 @@ def run_mode(
                     "error": str(e),
                     "sources": [],
                     "tool_calls": [],
+                    "call_history": [],
                     "timings": {},
                 }
             )
@@ -197,6 +249,11 @@ def merge_results(basic_results: list[dict], agent_results: list[dict]) -> list[
     for b in basic_results:
         q_id = b["id"]
         a = agent_by_id.get(q_id, {})
+        key_facts = b.get("key_facts", [])
+
+        # Key Facts 자동 매칭
+        basic_check = check_key_facts(b["answer"], key_facts)
+        agent_check = check_key_facts(a.get("answer", ""), key_facts)
 
         merged.append(
             {
@@ -205,17 +262,37 @@ def merge_results(basic_results: list[dict], agent_results: list[dict]) -> list[
                 "category": b["category"],
                 "question": b["question"],
                 "expected_answer": b.get("expected_answer", ""),
-                "key_facts": b.get("key_facts", []),
+                "key_facts": key_facts,
                 # Basic 결과
                 "answer_basic": b["answer"],
                 "latency_basic_ms": b["latency_ms"],
-                "tokens_basic": b["input_tokens"] + b["output_tokens"],
+                "tokens_basic": {
+                    "input": b["input_tokens"],
+                    "output": b["output_tokens"],
+                    "total": b["input_tokens"] + b["output_tokens"],
+                },
                 "sources_basic": b.get("sources", []),
+                "timings_basic": b.get("timings", {}),
+                # Basic Key Facts 매칭
+                "key_facts_matched_basic": basic_check["matched"],
+                "key_facts_missed_basic": basic_check["missed"],
+                "accuracy_basic": basic_check["accuracy"],
                 # Agent 결과
                 "answer_agent": a.get("answer", "N/A"),
                 "latency_agent_ms": a.get("latency_ms", 0),
-                "tokens_agent": a.get("input_tokens", 0) + a.get("output_tokens", 0),
+                "tokens_agent": {
+                    "input": a.get("input_tokens", 0),
+                    "output": a.get("output_tokens", 0),
+                    "total": a.get("input_tokens", 0) + a.get("output_tokens", 0),
+                },
+                "sources_agent": a.get("sources", []),
+                "timings_agent": a.get("timings", {}),
                 "tool_calls": a.get("tool_calls", []),
+                "call_history": a.get("call_history", []),
+                # Agent Key Facts 매칭
+                "key_facts_matched_agent": agent_check["matched"],
+                "key_facts_missed_agent": agent_check["missed"],
+                "accuracy_agent": agent_check["accuracy"],
                 # 평가 (수동 입력용)
                 "winner": "",
                 "notes": "",
@@ -230,25 +307,42 @@ def calculate_comparison_stats(merged: list[dict]) -> dict:
     basic_latencies = [m["latency_basic_ms"] for m in merged if m["latency_basic_ms"] > 0]
     agent_latencies = [m["latency_agent_ms"] for m in merged if m["latency_agent_ms"] > 0]
 
-    basic_tokens = sum(m["tokens_basic"] for m in merged)
-    agent_tokens = sum(m["tokens_agent"] for m in merged)
+    # 토큰 계산 (이제 객체 형태)
+    basic_input = sum(m["tokens_basic"]["input"] for m in merged)
+    basic_output = sum(m["tokens_basic"]["output"] for m in merged)
+    basic_tokens = basic_input + basic_output
 
-    # 비용 계산
-    basic_input = sum(m.get("input_basic", 0) for m in merged)
-    basic_output = sum(m.get("output_basic", 0) for m in merged)
-    agent_input = sum(m.get("input_agent", 0) for m in merged)
-    agent_output = sum(m.get("output_agent", 0) for m in merged)
+    agent_input = sum(m["tokens_agent"]["input"] for m in merged)
+    agent_output = sum(m["tokens_agent"]["output"] for m in merged)
+    agent_tokens = agent_input + agent_output
 
-    # tokens_basic/agent에서 대략 추정 (input:output = 9:1 가정)
-    if basic_input == 0 and basic_tokens > 0:
-        basic_input = int(basic_tokens * 0.9)
-        basic_output = basic_tokens - basic_input
-    if agent_input == 0 and agent_tokens > 0:
-        agent_input = int(agent_tokens * 0.9)
-        agent_output = agent_tokens - agent_input
-
+    # 비용 계산 (정확한 input/output 값 사용)
     basic_cost = calculate_cost(basic_input, basic_output)
     agent_cost = calculate_cost(agent_input, agent_output)
+
+    # 정확도 통계
+    basic_accuracies = [m["accuracy_basic"] for m in merged if m.get("key_facts")]
+    agent_accuracies = [m["accuracy_agent"] for m in merged if m.get("key_facts")]
+
+    # 효율성 지표 계산
+    basic_matched_facts = sum(len(m.get("key_facts_matched_basic", [])) for m in merged)
+    agent_matched_facts = sum(len(m.get("key_facts_matched_agent", [])) for m in merged)
+    total_latency_basic = sum(basic_latencies)
+    total_latency_agent = sum(agent_latencies)
+
+    efficiency = {}
+    if basic_matched_facts > 0:
+        efficiency["basic"] = {
+            "tokens_per_fact": round(basic_tokens / basic_matched_facts, 1),
+            "latency_per_fact_ms": round(total_latency_basic / basic_matched_facts, 1),
+            "cost_per_fact_krw": round(basic_cost["total_krw"] / basic_matched_facts, 2),
+        }
+    if agent_matched_facts > 0:
+        efficiency["agent"] = {
+            "tokens_per_fact": round(agent_tokens / agent_matched_facts, 1),
+            "latency_per_fact_ms": round(total_latency_agent / agent_matched_facts, 1),
+            "cost_per_fact_krw": round(agent_cost["total_krw"] / agent_matched_facts, 2),
+        }
 
     # 레벨별 비교
     by_level = defaultdict(
@@ -281,13 +375,21 @@ def calculate_comparison_stats(merged: list[dict]) -> dict:
         "total_questions": len(merged),
         "basic": {
             "avg_latency_ms": round(sum(basic_latencies) / len(basic_latencies), 1) if basic_latencies else 0,
-            "total_tokens": basic_tokens,
+            "tokens": {
+                "input": basic_input,
+                "output": basic_output,
+                "total": basic_tokens,
+            },
             "cost_usd": round(basic_cost["total_usd"], 4),
             "cost_krw": round(basic_cost["total_krw"], 0),
         },
         "agent": {
             "avg_latency_ms": round(sum(agent_latencies) / len(agent_latencies), 1) if agent_latencies else 0,
-            "total_tokens": agent_tokens,
+            "tokens": {
+                "input": agent_input,
+                "output": agent_output,
+                "total": agent_tokens,
+            },
             "cost_usd": round(agent_cost["total_usd"], 4),
             "cost_krw": round(agent_cost["total_krw"], 0),
         },
@@ -296,9 +398,24 @@ def calculate_comparison_stats(merged: list[dict]) -> dict:
             - (sum(basic_latencies) / len(basic_latencies) if basic_latencies else 0),
             1,
         ),
-        "token_diff": agent_tokens - basic_tokens,
+        "token_diff": {
+            "input": agent_input - basic_input,
+            "output": agent_output - basic_output,
+            "total": agent_tokens - basic_tokens,
+        },
         "cost_diff_usd": round(agent_cost["total_usd"] - basic_cost["total_usd"], 4),
         "cost_diff_krw": round(agent_cost["total_krw"] - basic_cost["total_krw"], 0),
+        "accuracy": {
+            "basic_avg": round(sum(basic_accuracies) / len(basic_accuracies), 4) if basic_accuracies else 0,
+            "agent_avg": round(sum(agent_accuracies) / len(agent_accuracies), 4) if agent_accuracies else 0,
+            "basic_perfect": sum(1 for a in basic_accuracies if a == 1.0),
+            "agent_perfect": sum(1 for a in agent_accuracies if a == 1.0),
+        },
+        "efficiency": efficiency,
+        "matched_facts": {
+            "basic": basic_matched_facts,
+            "agent": agent_matched_facts,
+        },
         "by_level": level_stats,
     }
 
@@ -361,6 +478,77 @@ def save_comparison(
     return output_path
 
 
+def save_agent_call_log(
+    merged: list[dict],
+    run_id: str,
+    output_dir: Path = RESULTS_DIR,
+) -> Path:
+    """Agent 도구 호출 로그 파일 생성
+
+    각 질문별로 Agent가 어떤 순서로 도구를 호출했는지,
+    어떤 검색 쿼리를 사용했고 어떤 문서를 찾았는지 기록합니다.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    lines = []
+    lines.append("=" * 80)
+    lines.append(f"Agent RAG 도구 호출 로그 - {run_id}")
+    lines.append("=" * 80)
+    lines.append("")
+
+    for m in merged:
+        q_id = m["id"]
+        question = m["question"]
+        call_history = m.get("call_history", [])
+
+        lines.append("-" * 80)
+        lines.append(f"Q{q_id}: {question}")
+        lines.append("-" * 80)
+
+        if not call_history:
+            lines.append("  (도구 호출 없음)")
+        else:
+            for call in call_history:
+                call_idx = call.get("call_index", "?")
+                tool = call.get("tool", "unknown")
+                query = call.get("query", "")
+                elapsed = call.get("elapsed_ms", 0)
+                result_count = call.get("result_count", 0)
+
+                lines.append(f"  [{call_idx}] {tool}")
+                lines.append(f"      Query: \"{query}\"")
+                lines.append(f"      Results: {result_count}개 ({elapsed:.1f}ms)")
+
+                # 문서 목록
+                docs = call.get("documents", [])
+                if docs:
+                    for doc in docs:
+                        rank = doc.get("rank", "?")
+                        fname = doc.get("file_name", "unknown")
+                        score = doc.get("score", 0)
+                        preview = doc.get("text_preview", "")[:60]
+                        lines.append(f"        #{rank} [{score:.3f}] {fname}")
+                        lines.append(f"            \"{preview}...\"")
+
+                lines.append("")
+
+        # Agent 답변 요약
+        answer = m.get("answer_agent", "")
+        answer_preview = answer[:200] + "..." if len(answer) > 200 else answer
+        lines.append(f"  → 답변: {answer_preview}")
+        lines.append(f"  → 정확도: {m.get('accuracy_agent', 0)*100:.0f}%")
+        lines.append("")
+
+    # 파일 저장
+    filename = f"{run_id}_agent_calls.log"
+    output_path = output_dir / filename
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+    return output_path
+
+
 # =============================================================================
 # 출력
 # =============================================================================
@@ -385,7 +573,13 @@ def print_comparison_summary(merged: list[dict]) -> None:
         f"│  {'평균 레이턴시 (ms)':<20} {stats['basic']['avg_latency_ms']:>15,.1f} {stats['agent']['avg_latency_ms']:>15,.1f} {stats['latency_diff_ms']:>+12,.1f} │"
     )
     print(
-        f"│  {'총 토큰':<20} {stats['basic']['total_tokens']:>15,} {stats['agent']['total_tokens']:>15,} {stats['token_diff']:>+12,} │"
+        f"│  {'입력 토큰':<20} {stats['basic']['tokens']['input']:>15,} {stats['agent']['tokens']['input']:>15,} {stats['token_diff']['input']:>+12,} │"
+    )
+    print(
+        f"│  {'출력 토큰':<20} {stats['basic']['tokens']['output']:>15,} {stats['agent']['tokens']['output']:>15,} {stats['token_diff']['output']:>+12,} │"
+    )
+    print(
+        f"│  {'총 토큰':<20} {stats['basic']['tokens']['total']:>15,} {stats['agent']['tokens']['total']:>15,} {stats['token_diff']['total']:>+12,} │"
     )
     print(
         f"│  {'비용 (USD)':<20} {'$' + format(stats['basic']['cost_usd'], '.4f'):>15} {'$' + format(stats['agent']['cost_usd'], '.4f'):>15} {'$' + format(stats['cost_diff_usd'], '+.4f'):>12} │"
@@ -394,6 +588,32 @@ def print_comparison_summary(merged: list[dict]) -> None:
         f"│  {'비용 (KRW)':<20} {'₩' + format(int(stats['basic']['cost_krw']), ','):>15} {'₩' + format(int(stats['agent']['cost_krw']), ','):>15} {'₩' + format(int(stats['cost_diff_krw']), '+,'):>12} │"
     )
     print("└──────────────────────────────────────────────────────────────────┘")
+
+    # 정확도 통계
+    if stats.get("accuracy"):
+        acc = stats["accuracy"]
+        print("\n┌──────────────────────────────────────────────────────────────────┐")
+        print("│                         정확도 (Key Facts)                       │")
+        print("├──────────────────────────────────────────────────────────────────┤")
+        print(f"│  Basic: 평균 {acc['basic_avg']*100:.1f}%, 완벽 매칭 {acc['basic_perfect']}개                            │")
+        print(f"│  Agent: 평균 {acc['agent_avg']*100:.1f}%, 완벽 매칭 {acc['agent_perfect']}개                            │")
+        print("└──────────────────────────────────────────────────────────────────┘")
+
+    # 효율성 지표
+    if stats.get("efficiency"):
+        eff = stats["efficiency"]
+        print("\n┌──────────────────────────────────────────────────────────────────┐")
+        print("│                         효율성 지표                              │")
+        print("├──────────────────────────────────────────────────────────────────┤")
+        if "basic" in eff:
+            print(f"│  Basic: {eff['basic']['tokens_per_fact']:.0f} tokens/fact, "
+                  f"{eff['basic']['latency_per_fact_ms']:.0f}ms/fact, "
+                  f"₩{eff['basic']['cost_per_fact_krw']:.2f}/fact     │")
+        if "agent" in eff:
+            print(f"│  Agent: {eff['agent']['tokens_per_fact']:.0f} tokens/fact, "
+                  f"{eff['agent']['latency_per_fact_ms']:.0f}ms/fact, "
+                  f"₩{eff['agent']['cost_per_fact_krw']:.2f}/fact     │")
+        print("└──────────────────────────────────────────────────────────────────┘")
 
     print("\n레벨별 레이턴시 비교:")
     for level, data in stats["by_level"].items():
@@ -508,15 +728,15 @@ def generate_comparison_report(
             </div>
             <div class="stat-card basic">
                 <div class="stat-label">Basic 총 토큰</div>
-                <div class="stat-value">{stats["basic"]["total_tokens"]:,}</div>
+                <div class="stat-value">{stats["basic"]["tokens"]["total"]:,}</div>
             </div>
             <div class="stat-card agent">
                 <div class="stat-label">Agent 총 토큰</div>
-                <div class="stat-value">{stats["agent"]["total_tokens"]:,}</div>
+                <div class="stat-value">{stats["agent"]["tokens"]["total"]:,}</div>
             </div>
             <div class="stat-card diff">
                 <div class="stat-label">토큰 차이</div>
-                <div class="stat-value">{stats["token_diff"]:+,}</div>
+                <div class="stat-value">{stats["token_diff"]["total"]:+,}</div>
             </div>
             <div class="stat-card basic">
                 <div class="stat-label">Basic 비용</div>
@@ -623,11 +843,11 @@ def generate_question_cards(merged: list[dict]) -> str:
                 </div>
                 <div class="answer-compare">
                     <div class="answer-box basic">
-                        <div class="answer-label">🟢 Basic RAG ({m["latency_basic_ms"]:,.0f}ms, {m["tokens_basic"]:,} tokens)</div>
+                        <div class="answer-label">🟢 Basic RAG ({m["latency_basic_ms"]:,.0f}ms, {m["tokens_basic"]["total"]:,} tokens, 정확도: {m["accuracy_basic"]*100:.0f}%)</div>
                         <div class="answer-content">{m["answer_basic"]}</div>
                     </div>
                     <div class="answer-box agent">
-                        <div class="answer-label">🔵 Agent RAG ({m["latency_agent_ms"]:,.0f}ms, {m["tokens_agent"]:,} tokens)</div>
+                        <div class="answer-label">🔵 Agent RAG ({m["latency_agent_ms"]:,.0f}ms, {m["tokens_agent"]["total"]:,} tokens, 정확도: {m["accuracy_agent"]*100:.0f}%)</div>
                         <div class="answer-content">{m["answer_agent"]}</div>
                     </div>
                 </div>
@@ -696,10 +916,12 @@ def main():
         # 저장 및 출력
         comparison_path = save_comparison(merged, run_id)
         html_path = generate_comparison_report(merged, run_id)
+        log_path = save_agent_call_log(merged, run_id)
 
         print_comparison_summary(merged)
         print(f"\n💾 비교 결과: {comparison_path}")
         print(f"📊 HTML 리포트: {html_path}")
+        print(f"📝 Agent 호출 로그: {log_path}")
         return
 
     # 질문 로드 및 필터
@@ -743,10 +965,12 @@ def main():
         merged = merge_results(basic_results, agent_results)
         comparison_path = save_comparison(merged, run_id)
         html_path = generate_comparison_report(merged, run_id)
+        log_path = save_agent_call_log(merged, run_id)
 
         print_comparison_summary(merged)
         print(f"\n💾 비교 결과: {comparison_path}")
         print(f"📊 HTML 리포트: {html_path}")
+        print(f"📝 Agent 호출 로그: {log_path}")
 
 
 if __name__ == "__main__":

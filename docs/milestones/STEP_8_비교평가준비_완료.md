@@ -1,8 +1,9 @@
-# STEP 8: 비교 평가
+# STEP 8: 비교 평가 준비
 
-## 상태: 진행 중
+## 상태: 완료
 
 ## 목표
+
 Basic RAG와 Agent RAG의 성능 및 품질 비교 평가
 
 ---
@@ -36,24 +37,26 @@ uv run python scripts/run_comparison.py --dry-run
 
 ## 2. 출력 파일
 
-| 파일 | 설명 |
-|------|------|
-| `{run_id}_basic.json` | Basic 모드 전체 결과 |
-| `{run_id}_agent.json` | Agent 모드 전체 결과 |
-| `{run_id}_comparison.json` | 병합된 비교 결과 |
-| `{run_id}_comparison.html` | 시각화 HTML 리포트 |
+| 파일                       | 설명                 |
+| -------------------------- | -------------------- |
+| `{run_id}_basic.json`      | Basic 모드 전체 결과 |
+| `{run_id}_agent.json`      | Agent 모드 전체 결과 |
+| `{run_id}_comparison.json` | 병합된 비교 결과     |
+| `{run_id}_comparison.html` | 시각화 HTML 리포트   |
 
 ---
 
 ## 3. 비교 항목
 
 ### 정량적 비교
+
 - **레이턴시**: 평균, 최소, 최대
 - **토큰 사용량**: 입력, 출력, 총합
 - **비용**: USD, KRW (Claude Sonnet 기준)
 - **레벨별 분포**: Level 1~4별 성능 차이
 
 ### 정성적 비교 (수동 평가)
+
 - **정확성**: 사실이 맞는가?
 - **완전성**: 필요한 정보가 다 있는가?
 - **관련성**: 질문에 맞는 답변인가?
@@ -144,10 +147,12 @@ uv run python scripts/run_comparison.py --dry-run
 ### 튜닝 포인트
 
 1. **Agent 시스템 프롬프트 개선**
+
    - 검색 쿼리 생성 가이드 추가
    - 답변 형식 지정
 
 2. **검색 파라미터 튜닝**
+
    - k (검색 문서 수): 3, 5, 7 비교
    - 하이브리드 검색 적용
 
@@ -161,13 +166,14 @@ uv run python scripts/run_comparison.py --dry-run
 
 ### 모델별 가격 (USD per 1M tokens)
 
-| 모델 | Input | Output |
-|------|-------|--------|
-| Claude Sonnet 4.5 | $3 | $15 |
-| Claude Haiku 3.5 | $0.80 | $4 |
-| Claude Opus 4.5 | $15 | $75 |
+| 모델              | Input | Output |
+| ----------------- | ----- | ------ |
+| Claude Sonnet 4.5 | $3    | $15    |
+| Claude Haiku 3.5  | $0.80 | $4     |
+| Claude Opus 4.5   | $15   | $75    |
 
 ### 환율
+
 - USD → KRW: 1,450원
 
 ### 사용법
