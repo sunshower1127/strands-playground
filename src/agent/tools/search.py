@@ -8,7 +8,6 @@ from strands import tool
 from src.embedding_client import EmbeddingClient
 from src.opensearch_client import OpenSearchClient
 
-
 # 싱글턴 클라이언트 (Agent 내에서 재사용)
 _opensearch_client: OpenSearchClient | None = None
 _embedding_client: EmbeddingClient | None = None

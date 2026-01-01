@@ -4,7 +4,7 @@ Agent가 도구를 자율적으로 호출하여 RAG를 수행합니다.
 기존 파이프라인과 달리 Agent가 검색 여부/횟수를 스스로 결정합니다.
 
 Usage:
-    from src.rag.agent import AgentRAG
+    from src.agent import AgentRAG
 
     agent_rag = AgentRAG(project_id=334)
     result = agent_rag.query("연차 휴가는 며칠인가요?")
@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 from strands import Agent
 from strands.models.litellm import LiteLLMModel
 
-from src.tools.search import search_documents
+from .tools.search import search_documents
 
 load_dotenv()
 
