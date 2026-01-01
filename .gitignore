@@ -15,3 +15,5 @@ wheels/
 *.cer
 credentials/*
 !credentials/README.md
+
+data/results/*
