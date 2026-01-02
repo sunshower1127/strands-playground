@@ -14,6 +14,7 @@ Strands Agent 기반 RAG (Retrieval-Augmented Generation) 시스템
 - data/test_docs 폴더에 있는 문서를 Wissly를 통해서 OpenSearch에 업로드했습니다.
 - 해당 폴더의 프로젝트 아이디는 334번 입니다.
 - CLI를 통해 기억되고 있는 세션은 sessions 폴더에 저장되고 있습니다.
+- 웹 서치는 Tavily API를 사용하고 있습니다. 현재 키는 제 개인 개정이고 무료 플랜으로는 한달에 질문 500~1000개까지 가능합니다. 발급이 쉬우니 개인 계정을 만들어서 API 키를 사용하는 걸 추천합니다! (https://www.tavily.com/)
 
 ---
 
