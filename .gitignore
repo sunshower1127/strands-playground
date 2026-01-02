@@ -17,3 +17,4 @@ credentials/*
 !credentials/README.md
 
 data/results/*
+sessions/*
