@@ -248,9 +248,81 @@ Agent 모드에서는 도구 호출 여부를 스스로 판단하므로 CAG가 �
 
 쿼리 특성에 따라 검색 결과 개수(k)나 포맷을 동적으로 결정.
 
+### Gemini 모델 도입 검토
+
+현재 Claude를 사용 중이나, 향후 Gemini 도입 시 참고할 내용.
+
+#### LiteLLM vs Native Provider
+
+| 방식 | 장점 | 단점 |
+|------|------|------|
+| **LiteLLM 경유** (현재) | 패치 불필요, 범용적, Fallback 지원 | ~50ms 오버헤드 |
+| **Strands Native** | 직접 연결, Provider 특화 기능 | 신규 모델은 PR 대기 필요 |
+
+LiteLLM 오버헤드:
+- 공식 벤치마크: ~3.25ms ~ 50ms
+- 모든 응답에 `x-litellm-overhead-duration-ms` 헤더로 측정 가능
+
+#### Gemini 사용 시 모델 설정
+
+```python
+# LiteLLM으로 Gemini 사용 (패치 불필요)
+model = LiteLLMModel(
+    model_id="vertex_ai/gemini-2.5-flash",  # 또는 gemini-2.5-pro
+    params={
+        "vertex_project": os.getenv("GCP_PROJECT_ID"),
+        "vertex_location": "us-central1",
+        "max_tokens": 2048,
+    },
+)
+```
+
+#### Gemini 3.0 Thought Signature
+
+Gemini 3.0에서 도입된 **멀티턴 추론 상태 유지 메커니즘**.
+
+**개념:**
+```
+[Turn 1] User → Gemini → Tool Call + thought_signature 반환
+                              ↓
+[Turn 2] Tool 결과 + thought_signature 전달 → Gemini → 추론 이어서 → 응답
+```
+
+- 암호화된 토큰으로 "왜 이 도구를 호출했는지" 추론 맥락 보존
+- **필수 요건**: Gemini 3.0에서 Tool Call 시 signature 미전달하면 4xx 에러
+
+**Gemini 2.5 vs 3.0:**
+
+| 구분 | Gemini 2.5 | Gemini 3.0 |
+|------|------------|------------|
+| 상태 | Stateless | Stateful (Thought Signature) |
+| Tool Call 시 | 그냥 호출 | `thought_signature` 필수 반환 |
+| 다음 턴 | 컨텍스트만 전달 | signature도 함께 전달 필수 |
+
+**도입 필요성:**
+
+| 상황 | 필요 여부 |
+|------|----------|
+| 단순 Q&A | ❌ |
+| 1-2번 Tool Call | ❌ |
+| 복잡한 Multi-step 추론 (5+ Tool Calls) | 🔶 도움됨 |
+| 장기 실행 Agent (수십 번 Tool Call) | ✅ 유의미 |
+
+**현재 결론**: 우리 워크플로우(1-2회 Tool Call)에서는 오버스펙. Claude + LiteLLM으로 충분.
+
+**Strands에서 Gemini 3.0 사용 시 필요한 패치:**
+- [PR #1040](https://github.com/strands-agents/sdk-python/pull/1040): Vertex AI 직접 지원
+- [PR #1382](https://github.com/strands-agents/sdk-python/pull/1382): Gemini 3.0 thought_signature 지원
+
+**참고 문서:**
+- [Google AI - Thought Signatures](https://ai.google.dev/gemini-api/docs/thought-signatures)
+- [Vertex AI - Thought Signatures](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/thought-signatures)
+- [LiteLLM Gemini 3 지원](https://docs.litellm.ai/blog/gemini_3)
+
 ### 참고 자료
 
 - [Strands Agents 문서](https://strandsagents.com/latest/)
 - [LiteLLM Vertex AI](https://docs.litellm.ai/docs/providers/vertex_partner)
+- [LiteLLM Benchmarks](https://docs.litellm.ai/docs/benchmarks)
 - [Context Awareness Gate (arXiv)](https://arxiv.org/html/2411.16133)
 - [Dynamic Context Selection (arXiv)](https://arxiv.org/html/2512.14313)
