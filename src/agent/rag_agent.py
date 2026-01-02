@@ -21,6 +21,8 @@ from strands import Agent
 from strands.models.litellm import LiteLLMModel
 from strands.types.exceptions import MaxTokensReachedException
 
+from strands_tools.tavily import tavily_search
+
 from .tools.search import clear_sources, get_call_history, get_last_sources, search_documents
 
 logger = logging.getLogger(__name__)
@@ -81,16 +83,22 @@ class AgentRAGResult:
 AGENT_SYSTEM_PROMPT = """당신은 문서 검색 및 질문 답변 전문가입니다.
 
 사용자의 질문에 답하기 위해 다음 도구를 사용할 수 있습니다:
-- search_documents: 관련 문서 검색
+- search_documents: 내부 문서 검색 (회사 정책, 제품 가이드 등)
+- tavily_search: 외부 웹 검색 (법률, 트렌드, 경쟁사 정보 등)
+
+도구 선택 가이드:
+- 회사 내부 정보 → search_documents
+- 외부 정보 (법률, 시장 동향, 경쟁사) → tavily_search
+- 내부 정책과 외부 기준 비교 → 둘 다 사용
 
 답변 가이드라인:
 1. 먼저 질문을 분석하여 필요한 정보를 파악하세요
-2. search_documents 도구로 관련 문서를 검색하세요
+2. 적절한 도구로 관련 정보를 검색하세요
 3. 검색 시 완전한 문장으로 검색하세요 (예: "입사 1년차의 연차 일수는?" ✓, "1년차 연차" ✗)
 4. 검색 결과가 불충분하면 질문을 다른 관점에서 재구성하여 검색하세요
-5. 검색된 문서를 바탕으로 정확하게 답변하세요
-6. 문서에 없는 내용은 추측하지 마세요 - "문서에서 해당 정보를 찾을 수 없습니다"라고 답하세요
-7. 답변할 때 근거가 된 문서를 언급하세요
+5. 검색된 정보를 바탕으로 정확하게 답변하세요
+6. 정보가 없는 경우 "해당 정보를 찾을 수 없습니다"라고 답하세요
+7. 답변할 때 정보 출처를 언급하세요 (내부 문서명 또는 웹 출처)
 """
 
 
@@ -137,7 +145,7 @@ class AgentRAG:
         self.agent = Agent(
             model=self.model,
             system_prompt=AGENT_SYSTEM_PROMPT,
-            tools=[search_documents],
+            tools=[search_documents, tavily_search],
         )
 
     def query(self, question: str) -> AgentRAGResult:

@@ -3077,7 +3077,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "rerankers", extras = ["flashrank"], marker = "extra == 'rerank'" },
     { name = "strands-agents", extras = ["litellm"], specifier = ">=1.20.0" },
-    { name = "strands-agents-tools", specifier = ">=0.2.18" },
+    { name = "strands-agents-tools", extras = ["tavily"], specifier = ">=0.2.18" },
 ]
 provides-extras = ["rerank"]
 
