@@ -262,3 +262,63 @@ def test_session_continuity():
 - [ ] Phase 3: Session 저장/복원 구현
 - [ ] Phase 4: 테스트 코드 작성 (Unit, Golden)
 - [ ] Phase 5: API 통합 및 검증
+
+---
+
+## 9. 향후 발전: Multi-Agent (Swarm)
+
+현재는 단일 Agent + 여러 도구 구조로 충분하지만, 향후 복잡한 요구사항에 대비해 Swarm 패턴을 검토.
+
+### 9.1 현재 vs Swarm 비교
+
+| 항목 | 현재 (단일 Agent + 도구) | Swarm (Multi-Agent) |
+|------|------------------------|---------------------|
+| 구조 | 1 Agent + N 도구 | N Agent (각자 LLM 보유) |
+| 판단 주체 | 1개 LLM이 모든 판단 | 각 Agent가 자율 판단 |
+| 통신 방식 | 도구 호출 → 결과 반환 | Agent 간 handoff (위임) |
+| 비용 | LLM 1회 호출 | LLM N회 호출 |
+| 복잡도 | 낮음 | 높음 |
+
+### 9.2 핵심 차이: 자율성
+
+```python
+# 단일 Agent + LLM 도구 (현재)
+@tool
+def summarize(text: str) -> str:
+    return llm.generate(f"요약해줘: {text}")  # 시키는 것만 수행
+
+# Swarm Agent
+class ResearchAgent:
+    def run(self, task):
+        # 스스로 판단해서 다른 Agent 호출 가능
+        if self.need_more_info():
+            return handoff(SearchAgent, new_task)  # 자율적 위임
+        return self.complete(task)
+```
+
+**도구 안에 LLM이 있어도 Swarm이 아님** - 자율성 + Agent 간 통신이 있어야 Swarm.
+
+### 9.3 Swarm이 필요한 시점
+
+| 상황 | 단일 Agent | Swarm |
+|------|-----------|-------|
+| 내부 문서 검색 + 웹 검색 조합 | ✅ 충분 | 불필요 |
+| 논문 10개 각각 요약 후 종합 | △ 가능하지만 복잡 | ✅ 적합 |
+| 코딩(Claude) + 검색(Gemini) 혼용 | ❌ 어려움 | ✅ 적합 |
+| 장시간 자율 작업 (Deep Research) | ❌ 한계 | ✅ 적합 |
+
+### 9.4 관련 프레임워크
+
+| 프레임워크 | 특징 |
+|-----------|------|
+| **OpenAI Swarm** | OpenAI 실험적 멀티 에이전트 |
+| **LangGraph** | 에이전트 워크플로우 그래프 정의 |
+| **CrewAI** | 역할 기반 멀티 에이전트 협업 |
+| **AutoGen** | Microsoft의 대화형 멀티 에이전트 |
+
+### 9.5 현재 프로젝트 결론
+
+**당분간 단일 Agent + 도구로 충분**
+- Level 4 질문 (내부 문서 + 웹 검색 조합)은 도구 2개로 해결
+- Swarm 도입은 오버엔지니어링
+- 추후 Deep Research 같은 복잡한 요구사항 발생 시 재검토

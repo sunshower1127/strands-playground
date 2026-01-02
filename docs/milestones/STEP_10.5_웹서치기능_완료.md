@@ -86,6 +86,7 @@ Level 4 질문(multi_tool 카테고리)을 위한 웹 검색 도구 추가
 |--------|-----------|-----------|--------------|------|
 | **Tavily** | 1,000회/월 | ~11원/회 ($0.008) | ✅ 기본 제공 | AI 에이전트 최적화, RAG에 최적 |
 | **Google CSE** | 100회/일 (~3,000/월) | ~7원/회 ($0.005) | ❌ 직접 구현 | GCP 크레딧 활용 가능 |
+| **Gemini Grounding** | 1,500회/일 | ~20~49원/회 | ❌ 직접 구현 | LLM+검색 통합, GCP 환경 활용 |
 | **Serper.dev** | 2,500회/월 | 미확인 | ❌ 직접 구현 | Google 검색 결과 JSON 반환 |
 | **Exa** | 제한적 | 유료 | ✅ 기본 제공 | Neural + Keyword 하이브리드 |
 | **DuckDuckGo** | 무제한 (rate limit) | 무료 | ❌ 직접 구현 | API 키 불필요, 불안정 |
@@ -149,6 +150,31 @@ Level 4 질문(multi_tool 카테고리)을 위한 웹 검색 도구 추가
 **단점:**
 - Strands 통합 없음
 - 문서/커뮤니티 적음
+
+#### Gemini Google Search Grounding
+**장점:**
+- 무료 티어 넉넉 (1,500회/일 ≈ 45,000회/월)
+- GCP 환경 이미 사용 중이면 추가 설정 최소화
+- 검색 + 답변 생성을 한번에 처리
+- 출처(source) URL 자동 추출
+
+**단점:**
+- 유료 단가 높음 (Gemini 2.5: ~49원, Gemini 3: ~20원)
+- Strands 기본 도구 없음 (직접 구현 필요)
+- 한 프롬프트에서 여러 검색 시 각각 과금 (Gemini 3)
+- Agent가 검색 결과를 직접 제어하기 어려움 (LLM이 답변까지 생성)
+
+**비용 구조:**
+
+| 모델 | 무료 | 유료 단가 | 비고 |
+|------|------|----------|------|
+| Gemini 2.5 | 1,500/일 | $35/1,000회 (~49원) | 프롬프트당 과금 |
+| Gemini 3 | 1,500/일 | $14/1,000회 (~20원) | 검색 쿼리당 과금 (2026.1.5부터) |
+
+**적합한 상황:**
+- 개발/테스트 목적 (무료 티어로 충분)
+- GCP 환경을 이미 사용 중
+- 검색 결과의 출처 추적이 중요한 경우
 
 ---
 
@@ -258,9 +284,74 @@ agent = Agent(tools=[search_documents, exa_search])
 EXA_API_KEY=exa-xxxxx
 ```
 
+### 4.4 Option D: Gemini Google Search Grounding
+
+GCP 환경을 이미 사용 중이라면 별도 API 키 없이 웹 검색 가능.
+
+```python
+from strands import tool
+from typing import Any
+
+@tool
+def web_search(query: str) -> dict[str, Any]:
+    """
+    Gemini Google Search로 웹 검색을 수행합니다.
+
+    Args:
+        query: 검색할 질문 또는 키워드
+
+    Returns:
+        검색 결과 및 답변
+    """
+    from google import genai
+    from google.genai.types import GenerateContentConfig, GoogleSearch, Tool as GenaiTool
+
+    client = genai.Client()
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",  # 또는 gemini-3-flash-preview
+        contents=query,
+        config=GenerateContentConfig(
+            tools=[GenaiTool(google_search=GoogleSearch())]
+        ),
+    )
+
+    # grounding 메타데이터에서 출처 추출
+    sources = []
+    if hasattr(response, 'candidates') and response.candidates:
+        candidate = response.candidates[0]
+        if hasattr(candidate, 'grounding_metadata') and candidate.grounding_metadata:
+            metadata = candidate.grounding_metadata
+            if hasattr(metadata, 'grounding_chunks') and metadata.grounding_chunks:
+                for chunk in metadata.grounding_chunks:
+                    if hasattr(chunk, 'web') and chunk.web:
+                        sources.append({
+                            "title": getattr(chunk.web, 'title', ''),
+                            "uri": getattr(chunk.web, 'uri', '')
+                        })
+
+    return {
+        "query": query,
+        "answer": response.text,
+        "sources": sources[:5],
+    }
+```
+
+**환경변수:**
+```
+GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
+# 또는 Vertex AI 사용 시
+GCP_PROJECT_ID=your-project-id
+GCP_REGION=us-central1
+```
+
+**추가 설치:**
+```bash
+pip install google-genai
+```
+
 ---
 
-### 4.4 Option D: Google CSE + 크롤러 조합 (검색 + 페이지 추출)
+### 4.5 Option E: Google CSE + 크롤러 조합 (검색 + 페이지 추출)
 
 Google CSE는 검색만 제공하므로, 페이지 전체 내용이 필요하면 별도 크롤러 추가:
 
@@ -308,9 +399,10 @@ pip install beautifulsoup4
 | 우선순위 | 추천 |
 |----------|------|
 | 빠른 구현 | Tavily |
-| GCP 크레딧 활용 | Google CSE |
-| 무료 최대화 | Google CSE (3,000/월) 또는 Serper (2,500/월) |
+| GCP 크레딧 활용 | Google CSE 또는 Gemini Grounding |
+| 무료 최대화 | Gemini Grounding (45,000/월) > Google CSE (3,000/월) > Serper (2,500/월) |
 | 결과 품질 | Tavily (AI 최적화) |
+| GCP 환경 통일 | Gemini Grounding (별도 API 키 불필요) |
 
 ### 5.2 현재 상황
 
