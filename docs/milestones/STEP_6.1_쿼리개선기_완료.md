@@ -259,11 +259,13 @@ result = enhancer.enhance("연차 휴가는 며칠이야?", history=history)
 ## 향후 개선 방향 (v2+)
 
 > **참고**: Strands Agent 사용 시, 아래 기법들은 Agent가 자체적으로 처리할 수 있음.
+>
 > - History 기반 쿼리 강화: Agent의 대화 컨텍스트 관리로 자동 적용
 > - Query Decomposition: Agent가 복잡한 질문을 알아서 분해하여 여러 번 검색할 가능성 높음
 > - Multi-Query, HyDE: 프롬프트로 지시 가능
 >
 > **별도 구현이 필요한 경우**: 비용 최적화 (저렴한 모델 사용), 일관된 동작 보장, 세밀한 제어가 필요할 때
+> 비용 최적화 측면에서 요약된 히스토리를 히스토리와 같이 저장시키는 방법도 존재함. -> 추후 가능성 체크
 
 ---
 
@@ -381,12 +383,13 @@ def decomposed_search(query: str) -> str:
 
 **2025 연구 결과:**
 
-| 프레임워크 | 성능 향상 | 특징 |
-|-----------|----------|------|
-| [Question Decomposition RAG](https://aclanthology.org/2025.acl-srw.32.pdf) | MRR@10 +36.7%, F1 +11.6% | 분해 → 검색 → Rerank |
-| [HopRAG](https://arxiv.org/html/2502.12442v1) | 답변 정확도 +76.78% | 그래프 기반 다단계 추론 |
+| 프레임워크                                                                 | 성능 향상                | 특징                    |
+| -------------------------------------------------------------------------- | ------------------------ | ----------------------- |
+| [Question Decomposition RAG](https://aclanthology.org/2025.acl-srw.32.pdf) | MRR@10 +36.7%, F1 +11.6% | 분해 → 검색 → Rerank    |
+| [HopRAG](https://arxiv.org/html/2502.12442v1)                              | 답변 정확도 +76.78%      | 그래프 기반 다단계 추론 |
 
 **참고:**
+
 - [Haystack - Query Decomposition Cookbook](https://haystack.deepset.ai/cookbook/query_decomposition)
 - [MultiHop-RAG Benchmark](https://openreview.net/forum?id=t4eB3zYWBK)
 
@@ -433,6 +436,7 @@ def hyde_search(query: str) -> str:
 ```
 
 **왜 효과적인가:**
+
 - 질문: "연차 휴가 며칠?" → 짧고 의문형
 - 문서: "연차 휴가는 입사 1년 후 15일이 부여됩니다" → 길고 서술형
 - 가상 답변이 문서와 형태가 비슷해서 임베딩 유사도가 높아짐
@@ -454,11 +458,11 @@ def hyde_search(query: str) -> str:
            Claude Sonnet → 답변만 생성
 ```
 
-| 접근법 | 장점 | 단점 |
-|--------|------|------|
-| Agent 프롬프트에 삽입 | 구현 0초 | 비용 증가, 매번 실행 |
-| 별도 도구로 구현 | 선택적 실행, 비용 최적화 | 구현 필요 |
-| 아무것도 안함 | 비용 최소 | 검색 품질 제한 |
+| 접근법                | 장점                     | 단점                 |
+| --------------------- | ------------------------ | -------------------- |
+| Agent 프롬프트에 삽입 | 구현 0초                 | 비용 증가, 매번 실행 |
+| 별도 도구로 구현      | 선택적 실행, 비용 최적화 | 구현 필요            |
+| 아무것도 안함         | 비용 최소                | 검색 품질 제한       |
 
 ---
 

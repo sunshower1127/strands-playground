@@ -397,8 +397,142 @@ assert expanded == []
 
 ---
 
+## 향후 개선 방향: 더 세련된 청크 확장
+
+현재 구현은 고정 `window=5`로 단순하지만, 더 발전된 기법들이 존재한다.
+
+### 1. 청크 길이 기반 동적 확장
+
+```
+짧은 청크 (100 토큰) → window 10
+긴 청크 (500 토큰) → window 2
+```
+
+**장점:**
+
+- LLM 호출 없이 휴리스틱으로 결정 가능
+- 청크 밀도에 따른 자연스러운 조절
+
+**단점:**
+
+- 청크 길이 ≠ 정보 완결성 (짧아도 완결적일 수 있음)
+
+**효용:** 구현 가치 있음 (저비용으로 적응성 확보)
+
+```python
+class AdaptiveChunkExpander:
+    def _calculate_window(self, chunk_text: str) -> int:
+        """청크 길이에 따른 동적 window 계산"""
+        chunk_length = len(chunk_text.split())
+
+        if chunk_length < 50:
+            return 8  # 아주 짧은 청크 → 많은 이웃
+        elif chunk_length < 150:
+            return 5  # 중간
+        else:
+            return 2  # 긴 청크 → 적은 이웃
+```
+
+### 2. LLM이 확장 개수를 사전 결정
+
+질문 복잡도에 따라 LLM이 window 크기를 결정:
+
+- "연차 몇 일?" → window 1-2 (단순 사실)
+- "휴가 정책 전체 설명해줘" → window 10+ (포괄적 맥락)
+
+**장점:**
+
+- 질문 복잡도에 따른 적응적 컨텍스트
+
+**단점:**
+
+- LLM 호출 1회 추가 → 레이턴시/비용 증가
+- 이미 Reranking 후 Top-K만 확장하므로 추가 LLM 호출 대비 이득이 크지 않음
+
+**효용:** 제한적 (비용 대비 효용 낮음)
+
+### 3. 에이전트에 이웃 청크 조회 Tool 제공 (Agentic RAG)
+
+**가장 최신 트렌드**. LLM이 필요할 때만 추가 컨텍스트를 자율적으로 요청.
+
+```python
+# tools/neighbor_chunk_tool.py
+class NeighborChunkTool:
+    name = "get_neighbor_chunks"
+    description = "현재 청크의 앞/뒤 이웃 청크를 조회합니다. 맥락이 부족할 때 사용하세요."
+
+    def run(self, doc_id: str, chunk_idx: int, direction: str = "both", count: int = 3):
+        """
+        Args:
+            doc_id: 문서 ID
+            chunk_idx: 현재 청크 인덱스
+            direction: "before" | "after" | "both"
+            count: 조회할 이웃 개수
+        """
+        ...
+```
+
+**장점:**
+
+- LLM이 **필요할 때만** 추가 컨텍스트 요청
+- "이 부분 앞에 뭐가 있지?" → 자율적 판단
+- 불필요한 확장 방지
+
+**단점:**
+
+- 에이전트 루프 복잡성 증가
+- 여러 번의 Tool call → 레이턴시 증가 가능
+- 아직 "demo-grade" (프로덕션 안정성 부족)
+
+**효용:** 높음 (향후 Agentic RAG 전환 시 자연스럽게 도입)
+
+### 4. Contextual Retrieval (Anthropic)
+
+런타임 확장이 아닌 **인덱싱 시점에 사전 컨텍스트 주입**.
+
+```
+기존: "연차는 15일입니다."
+개선: "[ACME사 휴가정책 문서, 입사 1년차 기준] 연차는 15일입니다."
+```
+
+- 각 청크 앞에 50-100 토큰의 맥락 추가
+- 검색 실패율 35-67% 감소
+
+**효용:** 매우 높음 (다만 인덱싱 파이프라인 수정 필요)
+
+### 5. TreeRAG / 계층적 청크
+
+```
+문서
+├── 섹션 요약 (Parent)
+│   ├── 세부 청크 1 (Child)
+│   ├── 세부 청크 2 (Child)
+│   └── ...
+```
+
+- Child로 정밀 검색 → Parent로 확장
+- "locate precisely first, then expand to read"
+
+### 추천 우선순위
+
+| 순위 | 기법                           | 효용     | 구현 난이도        |
+| ---- | ------------------------------ | -------- | ------------------ |
+| 1    | **청크 길이 기반 동적 window** | 중       | 낮음 (휴리스틱)    |
+| 2    | **Contextual Retrieval**       | 매우높음 | 중간 (인덱싱 수정) |
+| 3    | **에이전트 Tool**              | 높음     | 높음 (아키텍처)    |
+| 4    | LLM 사전 결정                  | 낮음     | 중간               |
+
+---
+
 ## 참고 자료
 
 - [Elasticsearch - Fetch Surrounding Chunks](https://www.elastic.co/search-labs/blog/advanced-chunking-fetch-surrounding-chunks)
 - [GraphRAG - Parent-Child Retriever](https://graphrag.com/reference/graphrag/parent-child-retriever/)
 - [LanceDB - Parent Document Retriever](https://blog.lancedb.com/modified-rag-parent-document-bigger-chunk-retriever-62b3d1e79bc6)
+- [Anthropic - Contextual Retrieval](https://www.anthropic.com/news/contextual-retrieval)
+- [LlamaIndex - RAG is dead, long live agentic retrieval](https://www.llamaindex.ai/blog/rag-is-dead-long-live-agentic-retrieval)
+- [RAGFlow - From RAG to Context (2025 Review)](https://ragflow.io/blog/rag-review-2025-from-rag-to-context)
+- [IBM - Agentic Chunking with LangChain](https://www.ibm.com/think/tutorials/use-agentic-chunking-to-optimize-llm-inputs-with-langchain-watsonx-ai)
+- [Weaviate - What is Agentic RAG](https://weaviate.io/blog/what-is-agentic-rag)
+- [Pinecone - Chunking Strategies](https://www.pinecone.io/learn/chunking-strategies/)
+- [Firecrawl - Best Chunking Strategies 2025](https://www.firecrawl.dev/blog/best-chunking-strategies-rag-2025)
