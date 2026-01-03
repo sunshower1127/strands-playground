@@ -258,59 +258,125 @@ result = enhancer.enhance("연차 휴가는 며칠이야?", history=history)
 
 ## 향후 개선 방향 (v2+)
 
-> 현재는 v1 (기존 로직 포팅)으로 시작. 평가 후 필요시 아래 기법 도입 검토.
-> 상세 내용은 `docs/future_improvements.md` 참고.
+> **참고**: Strands Agent 사용 시, 아래 기법들은 Agent가 자체적으로 처리할 수 있음.
+> - History 기반 쿼리 강화: Agent의 대화 컨텍스트 관리로 자동 적용
+> - Query Decomposition: Agent가 복잡한 질문을 알아서 분해하여 여러 번 검색할 가능성 높음
+> - Multi-Query, HyDE: 프롬프트로 지시 가능
+>
+> **별도 구현이 필요한 경우**: 비용 최적화 (저렴한 모델 사용), 일관된 동작 보장, 세밀한 제어가 필요할 때
 
-| 버전     | 기법                     | 복잡도   | 효과             | 비고                         |
-| -------- | ------------------------ | -------- | ---------------- | ---------------------------- |
-| **v1**   | LLM Rewriting (현재)     | ⭐       | 베이스라인       | 기존 로직 포팅               |
-| **v1.1** | + 증분 요약 저장         | ⭐⭐     | 토큰 절감        | 히스토리 길어질 때 도입 검토 |
-| **v2**   | + Topic Switch Detection | ⭐⭐     | 노이즈 감소      | 주제 전환 시 히스토리 무시   |
-| **v3**   | + Multi-Query (2-3개)    | ⭐⭐⭐   | 검색 범위 확장   | RAG Fusion 방식              |
-| **v4**   | + HyDE 결합              | ⭐⭐⭐⭐ | 의미적 매칭 강화 | 가상 답변 임베딩             |
+---
 
-### v1.1 증분 요약 저장 (토큰 최적화)
+### 1. Multi-Query (쿼리 확장)
 
-> 히스토리가 길어질수록 QueryEnhancer 부담 측정 후 도입 검토
+원본 쿼리를 여러 변형으로 확장하여 검색 범위를 넓힘.
+
+**예시:**
 
 ```
-[현재 v1]
-매 턴: 히스토리 6개 메시지 (~1800자) → LLM → 쿼리 개선
-
-[v1.1 제안]
-답변 시: context_summary 생성하여 히스토리와 함께 저장
-검색 시: 요약 (~50자) + 현재 질문만 → LLM → 쿼리 개선
+입력: "Gemini API 사용법"
+      ↓ LLM
+출력: ["Gemini API 사용법",
+       "Gemini API tutorial",
+       "Gemini API 시작하기",
+       "Google Gemini SDK example"]
+      ↓ 각각 검색 후 결과 병합 (Reciprocal Rank Fusion)
 ```
 
-**도입 기준**: QueryEnhancer 토큰 사용량/레이턴시가 병목이 될 때
+**구현:**
 
-### CHIQ 방식 (연구 참고)
+```python
+from strands import tool
 
-- **QD** (Question Disambiguation): 대명사/약어 해소
-- **RE** (Response Expansion): AI 응답 확장
-- **PR** (Pseudo Response): 예상 답변 생성
-- **TS** (Topic Switch): 주제 전환 감지
-- **HS** (History Summary): 히스토리 요약
+MULTI_QUERY_PROMPT = """다음 검색 쿼리의 변형을 3개 생성하세요.
+동의어, 다른 표현, 영어/한국어 혼용 등을 활용하세요.
 
-→ 각 역할 분리로 정확도 향상, 단 LLM 호출 증가로 비용/레이턴시 트레이드오프
+원본 쿼리: "{query}"
 
-### 참고 논문
+JSON 배열로만 반환: ["변형1", "변형2", "변형3"]"""
 
-- [CHIQ: Contextual History Enhancement](https://arxiv.org/html/2406.05013v1)
-- [Query Rewriting in RAG Applications](https://shekhargulati.com/2024/07/17/query-rewriting-in-rag-applications/)
+@tool
+def multi_query_search(query: str) -> str:
+    """검색 전에 쿼리를 여러 변형으로 확장합니다"""
+    # LLM으로 변형 생성
+    response = llm.generate(MULTI_QUERY_PROMPT.format(query=query))
+    variants = json.loads(response)
 
-### v5 Query Decomposition (질문 분해)
+    # 원본 포함
+    all_queries = [query] + variants
+
+    # 각각 검색
+    all_results = []
+    for q in all_queries:
+        results = vector_db.search(q, top_k=5)
+        all_results.append(results)
+
+    # Reciprocal Rank Fusion으로 병합
+    return reciprocal_rank_fusion(all_results)
+
+def reciprocal_rank_fusion(result_lists: list, k: int = 60) -> list:
+    """여러 검색 결과를 RRF로 통합"""
+    scores = {}
+    for results in result_lists:
+        for rank, doc in enumerate(results):
+            doc_id = doc.id
+            if doc_id not in scores:
+                scores[doc_id] = 0
+            scores[doc_id] += 1 / (k + rank + 1)
+
+    # 점수순 정렬
+    sorted_docs = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    return [doc_id for doc_id, score in sorted_docs]
+```
+
+---
+
+### 2. Query Decomposition (질문 분해)
 
 복잡한 질문을 단순한 하위 질문들로 분해 후 각각 검색.
 
+**예시:**
+
 ```
-원본 질문: "A사와 B사의 연차 정책 차이점은?"
-      ↓ 분해
-["A사의 연차 정책은?", "B사의 연차 정책은?"]
+입력: "A사와 B사의 연차 정책 차이점은?"
+      ↓ LLM
+출력: ["A사의 연차 정책은?", "B사의 연차 정책은?"]
       ↓ 각각 검색
 [A사 문서들, B사 문서들]
-      ↓ 통합 + Rerank
-최종 컨텍스트
+      ↓ 통합 후 답변 생성
+```
+
+**구현:**
+
+```python
+from strands import tool
+
+DECOMPOSE_PROMPT = """다음 질문이 여러 하위 질문으로 분해 가능한지 판단하세요.
+
+질문: "{query}"
+
+분해 가능하면 하위 질문들을 JSON 배열로 반환: ["질문1", "질문2"]
+분해 불필요하면 빈 배열 반환: []"""
+
+@tool
+def decomposed_search(query: str) -> str:
+    """복잡한 질문을 분해하여 검색합니다"""
+    # 분해 시도
+    response = llm.generate(DECOMPOSE_PROMPT.format(query=query))
+    sub_queries = json.loads(response)
+
+    if not sub_queries:
+        # 분해 불필요 - 원본으로 검색
+        return vector_db.search(query)
+
+    # 각 하위 질문으로 검색
+    all_results = []
+    for sub_q in sub_queries:
+        results = vector_db.search(sub_q, top_k=5)
+        all_results.extend(results)
+
+    # 중복 제거 후 반환
+    return deduplicate(all_results)
 ```
 
 **2025 연구 결과:**
@@ -320,14 +386,86 @@ result = enhancer.enhance("연차 휴가는 며칠이야?", history=history)
 | [Question Decomposition RAG](https://aclanthology.org/2025.acl-srw.32.pdf) | MRR@10 +36.7%, F1 +11.6% | 분해 → 검색 → Rerank |
 | [HopRAG](https://arxiv.org/html/2502.12442v1) | 답변 정확도 +76.78% | 그래프 기반 다단계 추론 |
 
-**도입 시점:**
-- 비교 질문이 많을 때 ("A와 B의 차이", "X vs Y")
-- 다단계 추론이 필요한 질문
-- 단일 검색으로 답변 품질이 낮을 때
-
 **참고:**
 - [Haystack - Query Decomposition Cookbook](https://haystack.deepset.ai/cookbook/query_decomposition)
 - [MultiHop-RAG Benchmark](https://openreview.net/forum?id=t4eB3zYWBK)
+
+---
+
+### 3. HyDE (Hypothetical Document Embeddings)
+
+질문 대신 가상의 답변을 생성하여 검색. 답변 형태가 실제 문서와 더 유사하므로 검색 품질 향상.
+
+**예시:**
+
+```
+입력: "Gemini API 사용법"
+      ↓ LLM (가상 답변 생성)
+출력: "Gemini API를 사용하려면 먼저 Google Cloud 프로젝트를 생성하고,
+       API 키를 발급받습니다. 그 다음 google-generativeai 패키지를
+       pip install로 설치한 후, genai.configure(api_key=...)로
+       초기화하면 됩니다..."
+      ↓ 이 가상 답변을 임베딩해서 검색
+[실제 Gemini API 문서들]
+```
+
+**구현:**
+
+```python
+from strands import tool
+
+HYDE_PROMPT = """다음 질문에 대한 답변을 작성하세요.
+실제 정보가 아니어도 됩니다. 그럴듯한 답변 형식으로 작성하세요.
+200자 이내로 작성하세요.
+
+질문: "{query}"
+
+답변:"""
+
+@tool
+def hyde_search(query: str) -> str:
+    """가상 답변을 생성하여 검색합니다"""
+    # 가상 답변 생성
+    hypothetical_answer = llm.generate(HYDE_PROMPT.format(query=query))
+
+    # 가상 답변으로 검색 (문서와 유사한 형태)
+    return vector_db.search(hypothetical_answer, top_k=10)
+```
+
+**왜 효과적인가:**
+- 질문: "연차 휴가 며칠?" → 짧고 의문형
+- 문서: "연차 휴가는 입사 1년 후 15일이 부여됩니다" → 길고 서술형
+- 가상 답변이 문서와 형태가 비슷해서 임베딩 유사도가 높아짐
+
+---
+
+### 비용 최적화 전략
+
+```
+[Agent에게 전부 맡김]
+사용자 질문 → Claude Sonnet (비쌈) → 쿼리 강화 + 분해 + 검색 + 답변
+                    ↑ 전부 여기서 처리
+
+[별도 파이프라인]
+사용자 질문 → Gemini Flash (저렴) → 쿼리 강화/분해/HyDE
+                ↓
+           검색 (벡터 DB)
+                ↓
+           Claude Sonnet → 답변만 생성
+```
+
+| 접근법 | 장점 | 단점 |
+|--------|------|------|
+| Agent 프롬프트에 삽입 | 구현 0초 | 비용 증가, 매번 실행 |
+| 별도 도구로 구현 | 선택적 실행, 비용 최적화 | 구현 필요 |
+| 아무것도 안함 | 비용 최소 | 검색 품질 제한 |
+
+---
+
+### 참고 논문
+
+- [CHIQ: Contextual History Enhancement](https://arxiv.org/html/2406.05013v1)
+- [Query Rewriting in RAG Applications](https://shekhargulati.com/2024/07/17/query-rewriting-in-rag-applications/)
 
 ---
 
