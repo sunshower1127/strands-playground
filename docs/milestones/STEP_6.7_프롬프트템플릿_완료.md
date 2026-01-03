@@ -269,3 +269,108 @@ User Prompt도 동일하게 조정:
 - [OpenAI - API Language Usage](https://help.openai.com/en/articles/6742369-how-do-i-use-the-openai-api-in-different-languages)
 - [Vertex AI Prompting Strategies](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/prompts/prompt-design-strategies)
 - [Gemini 3 Prompting Guide](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/start/gemini-3-prompting-guide)
+
+---
+
+## Agent 전환 시 고려사항
+
+### 개요
+Strands Agent 같은 에이전트 프레임워크를 사용하면 프롬프트 템플릿의 역할이 변경됨.
+
+### 구조 변화
+
+| 기존 RAG | Agent 방식 |
+|----------|-----------|
+| 매 요청마다 템플릿으로 프롬프트 조립 | Agent 생성 시 `system_prompt` 한 번 설정 |
+| `{context}` 플레이스홀더에 검색 결과 삽입 | Tool이 검색 결과 반환 |
+| PromptTemplate 클래스 사용 | Tool의 docstring + system_prompt |
+
+### 코드 비교
+
+```python
+# 기존 RAG 방식
+template = StrictPromptTemplate()
+system, user = template.render(context=검색결과, question=질문)
+response = llm.invoke(system, user)
+
+# Agent 방식
+agent = Agent(
+    system_prompt="""You are a document-based AI assistant.
+    Answer based ONLY on tool results.
+    Always cite sources.
+    Respond in Korean.""",
+    tools=[search_knowledge_base]
+)
+response = agent("연차 규정 알려줘")  # 끝
+```
+
+### 프롬프트 템플릿 → Agent 이전
+
+| 기존 템플릿 요소 | Agent에서의 위치 |
+|-----------------|-----------------|
+| System Prompt 전체 | `Agent(system_prompt=...)` |
+| `{context}` 플레이스홀더 | 제거 (Tool이 반환) |
+| `{question}` 플레이스홀더 | 제거 (사용자 입력이 직접 전달) |
+| `{response_language}` | system_prompt에 직접 명시 |
+
+### Tool Docstring의 중요성
+
+**Agent는 docstring을 보고 Tool 사용 여부를 판단함.** Strands에서는 docstring이 자동으로 tool description으로 변환됨.
+
+```python
+# ❌ 나쁜 예: Agent가 언제 써야 할지 모름
+@tool
+def search(q: str) -> str:
+    """검색합니다."""
+    pass
+
+# ✅ 좋은 예: Agent가 정확히 판단 가능
+@tool
+def search_knowledge_base(query: str) -> str:
+    """
+    회사 내부 문서를 검색합니다.
+
+    정책, 규정, 휴가, 복리후생 관련 질문에 사용하세요.
+    실시간 재고나 주문 정보는 이 도구로 검색할 수 없습니다.
+
+    Args:
+        query: 검색할 키워드 (예: "연차 사용 방법", "재택근무 규정")
+
+    Returns:
+        검색된 문서 목록 (번호, 제목, 내용 포함)
+    """
+    results = vector_search(query)
+    return format_results(results)
+```
+
+Strands는 docstring에서 자동 추출:
+- 첫 번째 문단 → tool description
+- Args 섹션 → parameter descriptions
+- Type hints → parameter types
+
+### Tool 반환값
+
+**반환값에는 순수 데이터만 포함.** 메타데이터나 지시사항은 불필요.
+
+```python
+# ✅ 좋은 예: 결과만 반환
+return "\n---\n".join([
+    f"[{i}] {r['title']}\n{r['content']}"
+    for i, r in enumerate(results, 1)
+])
+
+# ❌ 불필요: 메타데이터 포함
+return {
+    "description": "검색 결과입니다",
+    "instructions": "아래 문서를 기반으로 답변하세요",
+    "results": results
+}
+```
+
+### 결론
+
+Agent 도입 시:
+1. **PromptTemplate 클래스** → `Agent(system_prompt=...)` 로 이전
+2. **ContextBuilder** → Tool 내부 로직으로 이동 (여전히 필요)
+3. **Tool docstring** → LLM이 tool 선택에 사용하므로 상세히 작성 필수
+4. **Tool 반환값** → 순수 검색 결과만, 지시사항/메타데이터 불필요
