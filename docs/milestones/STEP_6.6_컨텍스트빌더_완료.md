@@ -305,3 +305,107 @@ Child로 검색 ──► Parent 청크 반환 ──► LLM
 **장점:** 검색 정밀도 + 컨텍스트 완전성 모두 확보
 
 **참고:** [LlamaIndex - Sentence Window Retrieval](https://docs.llamaindex.ai/en/stable/examples/node_postprocessor/MetadataReplacementDemo/)
+
+---
+
+## 메타데이터 포맷팅 (ContextBuilder 역할)
+
+### 왜 메타데이터를 컨텍스트에 포함하나?
+
+LLM이 문서의 **출처, 최신성, 신뢰도**를 판단할 수 있게 함.
+
+```
+검색 보너스 방식 (❌):
+- 모든 쿼리에 일괄 적용
+- "최신"이 중요한 쿼리인지 구분 못함
+- 관련 없는 최신 문서가 올라올 수 있음
+
+메타데이터 포함 방식 (✅):
+- LLM이 쿼리 의도 파악
+- 필요할 때만 최신 문서 우선 참조
+- 유연함
+```
+
+### 권장 메타데이터
+
+| 메타데이터      | OpenSearch 필드    | 용도                 | 권장도         |
+| --------------- | ------------------ | -------------------- | -------------- |
+| **파일명**      | `file_name`        | 출처 추적            | ✅ 필수        |
+| **수정일**      | `last_modified_at` | 최신성 판단          | ✅ 권장        |
+| **페이지 번호** | `page_number`      | 원본 확인            | ⚠️ 있으면 좋음 |
+| **문서 타입**   | `file_type`        | 정책/가이드/FAQ 구분 | ⚠️ 있으면 좋음 |
+
+### 포맷 예시
+
+#### 최소 권장
+
+```python
+f"[{file_name} | {last_modified_at}]\n{chunk_text}"
+```
+
+```
+[휴가정책.pdf | 2025-01-02]
+연차 휴가는 20일입니다. 입사 1년차 기준...
+```
+
+#### 확장 버전
+
+```python
+f"[{file_name} | p.{page_number} | {file_type} | {last_modified_at}]\n{chunk_text}"
+```
+
+```
+[휴가정책.pdf | p.3 | 정책문서 | 2025-01-02]
+연차 휴가는 20일입니다. 입사 1년차 기준...
+```
+
+### 구현 예시
+
+```python
+class MetadataContextBuilder:
+    """메타데이터 포함 컨텍스트 빌더"""
+
+    def build(self, results: list[dict]) -> str:
+        parts = []
+        for doc in results:
+            source = doc["_source"]
+
+            # 메타데이터 추출
+            file_name = source.get("file_name", "unknown")
+            last_modified = source.get("last_modified_at", "")
+            page_num = source.get("page_number")
+            text = source.get("chunk_text", "")
+
+            # 헤더 포맷팅
+            header_parts = [file_name]
+            if page_num:
+                header_parts.append(f"p.{page_num}")
+            if last_modified:
+                # ISO 날짜 → 읽기 쉬운 형식
+                header_parts.append(last_modified[:10])
+
+            header = " | ".join(header_parts)
+            parts.append(f"[{header}]\n{text}")
+
+        return "\n\n---\n\n".join(parts)
+```
+
+### 주의사항
+
+1. **토큰 효율**: 메타데이터가 본문보다 길면 안 됨
+2. **확실한 것만**: 잘못된 날짜/파일명은 오히려 해로움
+3. **일관된 포맷**: LLM이 패턴 인식하기 쉽게
+
+### 메타데이터 흐름
+
+```
+인덱싱 시: 메타데이터 저장 (file_name, last_modified_at 등)
+     ↓
+OpenSearch 검색: _source에 메타데이터 포함되어 반환
+     ↓
+Reranker: 점수만 추가, 메타데이터 그대로 유지
+     ↓
+ChunkExpander: 이웃 청크도 메타데이터 포함
+     ↓
+ContextBuilder: 메타데이터 포맷팅해서 LLM 컨텍스트로 변환
+```

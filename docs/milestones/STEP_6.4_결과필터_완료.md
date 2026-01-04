@@ -8,6 +8,99 @@
 
 ---
 
+## 핵심 결론
+
+### Hybrid + RRF 사용 시 규칙 기반 필터는 무의미
+
+```
+RRF 점수 예시:
+1위: 0.0328
+2위: 0.0320
+3위: 0.0320
+4위: 0.0312
+
+→ 점수 차이가 너무 작아서 임계값/엘보우 탐지 의미 없음
+→ RRF는 이미 "순위 기반 정규화"를 한 결과
+```
+
+| 필터 | RRF 이후 필요? | 이유 |
+|-----|--------------|------|
+| TopKFilter | ❌ | Hybrid `size`로 이미 처리됨 |
+| ScoreThresholdFilter | ❌ | RRF 점수 범위가 좁아서 임계값 설정 어려움 |
+| AdaptiveThresholdFilter | ❌ | RRF 점수 분포가 평탄해서 엘보우 탐지 무의미 |
+| **Reranker** | ✅ | 유일하게 "질문+문서 함께 이해"하는 단계 |
+
+### 권장 파이프라인
+
+```
+Hybrid(k=100, size=30) → Reranker(top_n=5) → LLM
+```
+
+---
+
+## Reranker 선택 가이드
+
+### 로컬 vs 클라우드 API
+
+| 방식 | 장점 | 단점 | 권장 환경 |
+|-----|------|------|----------|
+| **로컬 (FlashRank)** | 무료, 빠름 | 영어 위주, 한국어 약함 | 로컬 테스트 |
+| **로컬 (BGE-m3)** | 다국어 좋음, 무료 | 2.2GB, GPU 권장 | EC2 + GPU |
+| **클라우드 API** | 관리 불필요, 다국어 | 유료 (저렴) | **서버리스 (권장)** |
+
+### 서버리스 환경 = 클라우드 API 필수
+
+```
+Lambda/Fargate에서 로컬 모델 문제:
+- FlashRank: 영어 위주, 한국어 약함
+- BGE-m3: 2.2GB 모델, GPU 없음, 콜드스타트 시 타임아웃
+
+→ 클라우드 Reranker API 사용이 정답
+```
+
+### 클라우드 Reranker 비교
+
+| 서비스 | 모델 | 한국어 | 비용 | 권장도 |
+|-------|------|-------|------|-------|
+| **AWS Bedrock** | Cohere Rerank 3.5 | ✅ 100+ 언어 공식 | ~$0.001/1K queries | ✅ **권장** |
+| Google Vertex | semantic-ranker | ❓ 문서 불명확 | 비슷 | ⚠️ 한국어 검증 필요 |
+| Cohere 직접 | Rerank 3.5 | ✅ 100+ 언어 | ~$0.001/1K queries | ✅ |
+
+### Bedrock Cohere Rerank 권장 이유
+
+1. **한국어 100+ 언어 공식 지원** - 명시적으로 검증됨
+2. **비용 사실상 무료** - LLM 비용의 0.01% 수준
+3. **서버리스 친화적** - 모델 다운로드/관리 불필요
+4. **AWS 통합** - 현재 인프라와 일관성
+
+### 비용 분석
+
+```
+Bedrock Cohere Rerank:
+$0.001 / 1K search units = 검색 1건당 약 $0.000001 (0.001원)
+
+실사용 예시:
+- 1,000 쿼리/일 → 월 $0.03 (약 40원)
+- 10,000 쿼리/일 → 월 $0.30 (약 400원)
+- 100,000 쿼리/일 → 월 $3 (약 4,000원)
+
+vs LLM 비용:
+- Claude Sonnet 1회: ~$0.01~0.05 (10~70원)
+- Reranker 1회: ~$0.000001 (0.001원)
+→ LLM 비용의 0.01%, 사실상 무료
+```
+
+### Reranker 스펙
+
+| 항목 | Cohere Rerank 3.5 |
+|-----|------------------|
+| 최대 문서 수 | 1,000개/요청 |
+| 문서당 최대 | 4,096 토큰 |
+| 레이턴시 | ~100ms |
+| 비용 구조 | 문서 수/크기 무관 (쿼리당 과금) |
+
+---
+
 ## 배경 조사 결과 (2024-2025)
 
 ### OpenSearch 자체 기능
@@ -334,42 +427,120 @@ rerank = [
 
 ---
 
-## 향후 개선: 고급 Reranker 옵션
+## Bedrock Cohere Rerank 구현 예시
 
-> 현재 FlashRank로 시작. 품질 이슈 시 아래 모델 검토.
+```python
+import json
+import boto3
+
+
+class BedrockReranker:
+    """AWS Bedrock Cohere Rerank 클라이언트"""
+
+    def __init__(
+        self,
+        model_id: str = "cohere.rerank-v3-5:0",
+        region: str = "us-east-1",
+        top_n: int = 5,
+    ):
+        self.model_id = model_id
+        self.top_n = top_n
+        self.client = boto3.client("bedrock-runtime", region_name=region)
+
+    def rerank(self, query: str, documents: list[str]) -> list[dict]:
+        """문서 재정렬
+
+        Args:
+            query: 사용자 질문
+            documents: 재정렬할 문서 텍스트 리스트
+
+        Returns:
+            재정렬된 결과 [{index, relevance_score}, ...]
+        """
+        if not documents:
+            return []
+
+        response = self.client.invoke_model(
+            modelId=self.model_id,
+            body=json.dumps({
+                "query": query,
+                "documents": documents,
+                "top_n": self.top_n,
+            }),
+        )
+
+        result = json.loads(response["body"].read())
+        return result["results"]  # [{index, relevance_score}, ...]
+
+
+class RerankerFilter:
+    """Reranker 기반 결과 필터"""
+
+    def __init__(self, top_n: int = 5):
+        self.reranker = BedrockReranker(top_n=top_n)
+        self.top_n = top_n
+
+    def filter(self, query: str, results: list[dict]) -> list[dict]:
+        if not results:
+            return results
+
+        # 문서 텍스트 추출
+        docs = [r["_source"].get("chunk_text", "") for r in results]
+
+        # Rerank
+        ranked = self.reranker.rerank(query, docs)
+
+        # 원본 결과에서 상위 N개 추출 (순서 유지)
+        reranked_results = []
+        for item in ranked:
+            idx = item["index"]
+            result = results[idx].copy()
+            result["_rerank_score"] = item["relevance_score"]
+            reranked_results.append(result)
+
+        return reranked_results
+```
+
+---
+
+## 로컬 Reranker 옵션 (참고용)
+
+> 서버리스 환경에서는 권장하지 않음. 로컬 테스트/EC2+GPU 환경용.
 
 ### 2025 Reranker 비교
 
 | 모델                         | 정확도    | 속도      | 비용 | 다국어  | 특징             |
 | ---------------------------- | --------- | --------- | ---- | ------- | ---------------- |
-| **FlashRank**                | Good      | Very Fast | Free | 제한적  | ONNX, CPU 최적화 |
-| **BGE-reranker-v2-m3**       | High      | Moderate  | Free | ✅      | 오픈소스 SOTA    |
-| **Cohere Rerank 3.5**        | High      | Fast      | API  | ✅ 100+ | 프로덕션 안정성  |
-| **Cohere Rerank 3.5 Nimble** | High      | Very Fast | API  | ✅      | 속도 최적화 버전 |
-| **Voyage Rerank 2.5**        | Very High | Fast      | API  | ✅      | 최신 SOTA        |
+| **FlashRank**                | Good      | Very Fast | Free | ⚠️ 영어 위주 | ONNX, CPU 최적화 |
+| **BGE-reranker-v2-m3**       | High      | Moderate  | Free | ✅      | 2.2GB, GPU 권장  |
+| **Cohere Rerank 3.5**        | High      | Fast      | API  | ✅ 100+ | **프로덕션 권장** |
 
-### rerankers 라이브러리 활용
+### FlashRank (로컬 테스트용)
 
 ```python
-from rerankers import Reranker
+from flashrank import Ranker
 
-# FlashRank (현재 계획)
-ranker = Reranker("ms-marco-MiniLM-L-12-v2", model_type="flashrank")
-
-# BGE (더 정확, 무료) - 추천
-ranker = Reranker("BAAI/bge-reranker-v2-m3", model_type="cross-encoder")
-
-# Cohere (API, 프로덕션)
-ranker = Reranker("rerank-english-v3.0", model_type="cohere")
+ranker = Ranker()  # 첫 실행 시 ~4MB 모델 다운로드
+results = ranker.rerank(query="연차 휴가", documents=["문서1...", "문서2..."])
 ```
 
-### 권장 업그레이드 경로
+- 장점: 빠름, CPU OK, 무료
+- 단점: **한국어 약함** (MS MARCO = 영어 데이터셋)
 
-1. **시작**: FlashRank (빠르고 무료)
-2. **품질 개선 필요시**: BGE-reranker-v2-m3
-3. **프로덕션 + 다국어**: Cohere Rerank 3.5
+### BGE-reranker-v2-m3 (EC2+GPU용)
+
+```python
+from sentence_transformers import CrossEncoder
+
+model = CrossEncoder("BAAI/bge-reranker-v2-m3")
+scores = model.predict([("질문", "문서1"), ("질문", "문서2")])
+```
+
+- 장점: 다국어 좋음, 무료
+- 단점: 2.2GB, GPU 권장, 서버리스 부적합
 
 ### 참고 자료
 
 - [ZeroEntropy - Best Reranking Model 2025](https://www.zeroentropy.dev/articles/ultimate-guide-to-choosing-the-best-reranking-model-in-2025)
 - [Agentset Reranker Leaderboard](https://agentset.ai/rerankers)
+- [Cohere Rerank on Bedrock](https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-cohere-rerank.html)
