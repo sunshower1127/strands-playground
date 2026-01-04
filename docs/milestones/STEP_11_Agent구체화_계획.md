@@ -762,3 +762,133 @@ NVIDIA 연구나 엔터프라이즈 사례가 해당되는 조건:
 - [Strands Graph 문서](https://strandsagents.com/latest/documentation/docs/user-guide/concepts/multi-agent/graph/)
 - [Strands Swarm 문서](https://strandsagents.com/latest/documentation/docs/user-guide/concepts/multi-agent/swarm/)
 - [Multi-Agent collaboration patterns with Strands](https://aws.amazon.com/blogs/machine-learning/multi-agent-collaboration-patterns-with-strands-agents-and-amazon-nova/)
+
+---
+
+## 12. Strands 내장 툴 (strands-agents-tools)
+
+### 12.1 설치
+
+```bash
+pip install strands-agents-tools
+```
+
+`strands-agents`와 별개 패키지이므로 **별도 설치 필요**.
+
+### 12.2 제공 툴 목록
+
+#### 로컬 실행 (추가 비용 없음)
+
+| 툴 | 용도 | 비고 |
+|----|------|------|
+| `calculator` | 수학 계산 | 순수 Python 연산 |
+| `current_time` | 현재 시간 조회 | 시스템 시간 |
+| `file_read` | 파일 읽기 | 로컬 파일 I/O |
+| `file_write` | 파일 쓰기 | 로컬 파일 I/O |
+| `editor` | 파일 편집 (문자열 교체 등) | 로컬 파일 I/O |
+| `shell` | 쉘 명령어 실행 | 로컬 명령어 |
+| `http_request` | HTTP API 호출 | 외부 API 비용은 별도 |
+
+#### 외부 서비스 연동 (추가 비용 발생)
+
+| 툴 | 백엔드 | 비용 |
+|----|--------|------|
+| `memory` | **Amazon Bedrock Knowledge Base** | OpenSearch + S3 + 임베딩 비용 |
+| `mem0_memory` | **Mem0** 서비스 | Mem0 Cloud 또는 Self-hosted |
+| `use_llm` | 추가 LLM 호출 | 토큰 비용 |
+
+### 12.3 사용 예시
+
+```python
+from strands import Agent
+from strands_tools import calculator, current_time, file_read, http_request
+
+agent = Agent(tools=[calculator, current_time, file_read, http_request])
+
+agent("What is 42 ^ 9")
+agent("What time is it?")
+agent("Show me the contents of config.json")
+```
+
+### 12.4 memory vs mem0_memory 비교
+
+| 항목 | `memory` | `mem0_memory` |
+|------|----------|---------------|
+| **백엔드** | AWS Bedrock Knowledge Base | Mem0 서비스 |
+| **저장소** | S3 + OpenSearch | Mem0 Cloud 또는 벡터DB |
+| **비용** | 고정 비용 높음 (OpenSearch 최소 비용) | 무료 티어 10K memories |
+| **적합 환경** | AWS 올인 | 멀티 클라우드, 로컬 개발 |
+
+#### 비용 비교
+
+| 규모 | 추천 |
+|------|------|
+| **소규모 (테스트)** | Mem0 무료 티어 또는 Self-hosted |
+| **중규모 (프로덕션)** | 비슷함 (구성에 따라 다름) |
+| **대규모 (AWS 환경)** | Bedrock KB (통합 관리, 볼륨 할인) |
+
+### 12.5 Mem0 Self-hosted (Fargate 배포)
+
+Mem0는 오픈소스로 직접 호스팅 가능. 단, Fargate는 stateless이므로 **외부 벡터 DB 필요**.
+
+```python
+from mem0 import Memory
+
+config = {
+    "vector_store": {
+        "provider": "qdrant",
+        "config": {
+            "host": "your-qdrant-host.com",
+            "port": 6333,
+        }
+    }
+}
+
+m = Memory.from_config(config)
+```
+
+#### 외부 벡터 DB 옵션
+
+| 서비스 | 특징 |
+|--------|------|
+| **Amazon OpenSearch Serverless** | AWS 네이티브 |
+| **Pinecone** | 무료 티어 있음 |
+| **Qdrant Cloud** | 무료 티어 1GB |
+| **PostgreSQL + pgvector** | RDS로 운영 가능 |
+
+### 12.6 RAG에 추천하는 툴 조합
+
+| 용도 | 툴 조합 |
+|------|---------|
+| **기본 RAG** | `memory` + `use_llm` |
+| **웹 연동 RAG** | `memory` + `http_request` + `use_llm` |
+| **문서 기반 RAG** | `memory` + `file_read` + 커스텀 `pdf_parser` |
+| **하이브리드** | `memory` + `http_request` + `calculator` + `current_time` |
+
+#### 커스텀 툴 예시
+
+```python
+from strands import tool
+
+@tool
+def web_search(query: str) -> str:
+    """Google/Bing 검색 결과 반환"""
+    # SerpAPI, Tavily 등 활용
+    pass
+
+@tool
+def pdf_parser(file_path: str) -> str:
+    """PDF에서 텍스트 추출"""
+    pass
+
+@tool
+def db_query(sql: str) -> str:
+    """데이터베이스 조회"""
+    pass
+```
+
+### 12.7 참고 자료
+
+- [Strands Tools Overview](https://strandsagents.com/latest/user-guide/concepts/tools/tools_overview/)
+- [Mem0 공식 사이트](https://mem0.ai/)
+- [Mem0 Pricing](https://mem0.ai/pricing)
