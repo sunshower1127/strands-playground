@@ -686,6 +686,126 @@ PUT /rag-index
 
 ---
 
+## 프로젝트 필터링 전략
+
+### 배경: 문서 공유 시나리오
+
+같은 문서가 여러 프로젝트에서 사용될 수 있음:
+
+```
+팀 공용폴더 (4000개 문서)
+├── 사람 A가 열음 → project_A
+├── 사람 B가 열음 → project_B
+└── 사람 C가 열음 → project_C
+
+→ 같은 4000개 문서를 3개 프로젝트에서 각각 검색해야 함
+```
+
+### 방안 비교
+
+| 방안 | 설명 | 검색 성능 | 저장 비용 | 업데이트 비용 |
+|------|------|----------|----------|--------------|
+| **1. project_ids 배열** | 메타데이터에 `["proj_A", "proj_B"]` 저장 | ✅ 빠름 | ✅ 최소 | ❌ 문서 전체 재인덱싱 |
+| **2. project별 문서 복제** | 프로젝트마다 별도 문서 저장 | ✅ 빠름 | ❌ N배 증가 | ✅ 없음 (추가만) |
+| **3. document_ids 필터링** | 외부에서 document_id 목록 받아 terms 필터 | ❌ 수천개면 느림 | ✅ 최소 | ✅ 없음 |
+
+### 권장: 방안 2 (project별 문서 복제)
+
+**이유:**
+
+1. **OpenSearch는 Update = 재인덱싱**
+   - immutable segments 구조
+   - 메타데이터만 바꿔도 전체 문서(벡터 포함) 재작성
+   - update 비용 > insert 비용
+
+2. **공용폴더 시나리오에서 방안 1의 문제**
+   ```
+   project_ids 배열 방식:
+   사람 A 열음 → 4000개 insert
+   사람 B 열음 → 4000개 update (= 4000개 재인덱싱)
+   사람 C 열음 → 4000개 update (= 4000개 재인덱싱)
+
+   project별 복제 방식:
+   사람 A 열음 → 4000개 insert
+   사람 B 열음 → 4000개 insert (기존 건드리지 않음)
+   사람 C 열음 → 4000개 insert
+   ```
+
+3. **저장 비용은 상대적으로 저렴**
+   - 벡터 저장 비용 < 재인덱싱 I/O + CPU 비용
+   - 필요시 나중에 중복 제거 배치 가능
+
+### 구현
+
+```python
+# 인덱싱 시 project_id를 단일 값으로 저장
+{
+    "document_id": "doc_123",
+    "project_id": "project_A",  # 단일 값 (배열 아님)
+    "chunk_text": "...",
+    "embedding": [...]
+}
+
+# 같은 문서를 다른 프로젝트에서 열면 새 문서로 추가
+{
+    "document_id": "doc_123",
+    "project_id": "project_B",  # 별도 문서
+    "chunk_text": "...",
+    "embedding": [...]
+}
+```
+
+### 검색 쿼리
+
+```python
+{
+    "query": {
+        "knn": {
+            "embedding": {
+                "vector": embedding,
+                "k": k,
+                "filter": {
+                    "term": {"project_id": "project_A"}  # 단순 term 쿼리
+                }
+            }
+        }
+    }
+}
+```
+
+### 저장 공간 증가 대응
+
+| 시나리오 | 저장량 | 대응 |
+|---------|-------|------|
+| 10명이 같은 폴더 사용 | 벡터 10배 | 허용 범위 |
+| 중복 심각해지면 | - | 배치로 중복 제거 검토 |
+| 프로젝트 삭제 시 | - | 해당 project_id 문서 bulk delete |
+
+### 방안 1을 쓰는 경우 (참고)
+
+만약 project_ids 배열 방식을 쓴다면:
+
+```python
+# 인덱싱
+{
+    "document_id": "doc_123",
+    "project_ids": ["project_A", "project_B"],  # 배열
+    "chunk_text": "...",
+    "embedding": [...]
+}
+
+# 검색 (terms 쿼리로 배열 내 값 매칭)
+{
+    "filter": {
+        "terms": {"project_ids": ["project_A"]}
+    }
+}
+```
+
+**주의:** 프로젝트 추가/제거 시마다 문서 전체 재인덱싱 발생
+
+---
+
 ## 파일 필터링 전략
 
 ### 현재 방식: terms 필터
