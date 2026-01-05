@@ -18,3 +18,5 @@ credentials/*
 
 data/results/*
 sessions/*
+
+.DS_Store

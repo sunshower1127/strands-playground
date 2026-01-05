@@ -255,7 +255,217 @@ def test_session_continuity():
 
 ---
 
-## 8. 마일스톤
+## 8. 도구 호출 횟수 제한 (토큰 절약)
+
+### 8.1 제한 필요성
+
+- 기본 검색 에이전트는 도구 호출을 최소화하여 토큰 비용 절감
+- 무한 루프 방지 및 응답 시간 개선
+
+### 8.2 제한 방법
+
+#### 방법 1: `max_turns` 파라미터 (권장)
+
+```python
+from strands import Agent
+
+# 기본 검색용 - 턴 제한으로 간접 제어
+basic_agent = Agent(
+    model=model,
+    tools=[search_documents],
+    max_turns=3,  # 최대 3턴으로 제한
+)
+
+# 복잡한 작업용 - 더 많은 턴 허용
+advanced_agent = Agent(
+    model=model,
+    tools=[search_documents, ask_user, analyze],
+    max_turns=10,
+)
+```
+
+> **참고:** Strands SDK에는 `max_tool_calls` 같은 직접적인 파라미터가 없음. `max_turns`로 간접 제어.
+
+#### 방법 2: 도구 내 직접 카운팅
+
+```python
+call_counts = {}
+
+@tool
+def search_documents(query: str) -> str:
+    """문서를 검색합니다."""
+    # 호출 횟수 추적
+    call_counts['search'] = call_counts.get('search', 0) + 1
+
+    if call_counts['search'] > 3:
+        return "검색 횟수 제한 초과 (최대 3회). 기존 결과로 답변해주세요."
+
+    return hybrid_search(query)
+```
+
+#### 방법 3: 시스템 프롬프트로 유도
+
+```python
+EFFICIENT_SEARCH_PROMPT = """
+검색 작업 시 다음 원칙을 따르세요:
+- 최대 2-3번의 검색만 수행
+- 첫 검색 결과로 충분하면 추가 검색 금지
+- 검색어를 신중하게 선택하여 한 번에 원하는 결과 획득
+"""
+```
+
+### 8.3 모드별 권장 설정
+
+| 모드 | max_turns | 도구 제한 전략 | 예상 토큰 |
+|------|-----------|----------------|-----------|
+| 일반 (Haiku) | N/A | 도구 없음 | 최소 |
+| 기본 검색 | 2-3 | 프롬프트 유도 | 중간 |
+| 고급 Agent | 5-10 | 제한 없음 | 높음 |
+
+### 8.4 UnifiedAgent에 적용
+
+```python
+class UnifiedAgent:
+    def query(self, question: str, mode: str = "normal") -> AgentResult:
+        if mode == "normal":
+            model = LiteLLMModel(model_id="vertex_ai/claude-haiku")
+            tools = []
+            max_turns = None
+        elif mode == "basic_search":
+            model = LiteLLMModel(model_id="vertex_ai/claude-haiku")
+            tools = [search_documents]
+            max_turns = 3  # 토큰 절약
+        else:  # "agent"
+            model = LiteLLMModel(model_id="vertex_ai/claude-sonnet-4-5")
+            tools = [search_documents, ask_user]
+            max_turns = 10  # 복잡한 작업 허용
+
+        agent = Agent(
+            model=model,
+            tools=tools,
+            max_turns=max_turns,
+            # ...
+        )
+```
+
+---
+
+## 9. 실시간 이벤트 및 중단 기능
+
+### 9.1 Callback Handlers (도구 호출 UI 표시)
+
+Strands SDK는 에이전트 실행 중 이벤트를 실시간으로 받을 수 있는 **Callback Handler**를 제공합니다.
+
+```python
+from strands import Agent
+
+def ui_callback_handler(**kwargs):
+    # 도구 호출 감지 → UI에 "검색 중..." 표시
+    if "current_tool_use" in kwargs and kwargs["current_tool_use"].get("name"):
+        tool_name = kwargs["current_tool_use"]["name"]
+        print(f"🔧 도구 사용 중: {tool_name}")
+        # 여기서 웹소켓으로 프론트엔드에 상태 전송 가능
+        # await websocket.send({"status": "tool_call", "tool": tool_name})
+
+    # 이벤트 루프 시작
+    if kwargs.get("start_event_loop", False):
+        print("▶️ 처리 시작...")
+
+    # 완료
+    if kwargs.get("complete", False):
+        print("✅ 완료")
+
+agent = Agent(
+    model=model,
+    tools=[search_documents],
+    callback_handler=ui_callback_handler,  # 콜백 등록
+)
+```
+
+**주요 이벤트:**
+| 이벤트 | 설명 |
+|--------|------|
+| `current_tool_use` | 도구 호출 시작 (도구명 포함) |
+| `init_event_loop` | 이벤트 루프 초기화 |
+| `start_event_loop` | 사이클 시작 |
+| `complete` | 사이클 완료 |
+
+> **참고:** Callback Handler는 Python만 지원. TypeScript는 async iterator 사용.
+
+### 9.2 도구 호출 취소 (Hooks)
+
+`BeforeToolCallEvent` 훅을 사용해 도구 호출을 취소할 수 있습니다.
+
+```python
+from strands.hooks import Hook
+
+class ApprovalHook(Hook):
+    def on_before_tool_call(self, event):
+        # 특정 조건에서 도구 호출 취소
+        if should_cancel():
+            event.cancel_tool = "사용자가 취소했습니다"
+            return
+
+        # 또는 사용자 확인 요청
+        if event.tool_name == "delete_document":
+            if not get_user_approval(f"{event.tool_name} 실행을 허용하시겠습니까?"):
+                event.cancel_tool = "사용자가 거부했습니다"
+```
+
+### 9.3 Force Stop (강제 중단)
+
+에이전트 실행을 강제로 중단할 수 있습니다.
+
+```python
+async for event in agent.stream_async(question):
+    # 강제 중단 감지
+    if event.get("force_stop", False):
+        reason = event.get("force_stop_reason", "unknown")
+        print(f"⛔ 강제 중단: {reason}")
+        break
+
+    # 사용자가 취소 버튼 클릭 시
+    if user_clicked_cancel:
+        # agent 중단 로직 (구현 방식은 SDK 버전에 따라 다름)
+        break
+```
+
+### 9.4 UI 통합 예시
+
+```python
+class AgentWithUI:
+    def __init__(self, websocket):
+        self.ws = websocket
+
+    def create_callback(self):
+        async def callback(**kwargs):
+            if "current_tool_use" in kwargs:
+                tool = kwargs["current_tool_use"].get("name")
+                if tool:
+                    await self.ws.send_json({
+                        "type": "status",
+                        "message": f"{tool} 실행 중...",
+                        "tool": tool
+                    })
+
+            if kwargs.get("complete"):
+                await self.ws.send_json({
+                    "type": "status",
+                    "message": "완료",
+                    "done": True
+                })
+
+        return callback
+```
+
+### 9.5 참고 문서
+
+- [Callback Handlers](https://strandsagents.com/latest/documentation/docs/user-guide/concepts/streaming/callback-handlers/)
+- [Async Iterators](https://strandsagents.com/latest/documentation/docs/user-guide/concepts/streaming/async-iterators/)
+
+---
+
+## 10. 마일스톤
 
 - [ ] Phase 1: UnifiedAgent 기본 구조 구현
 - [ ] Phase 2: Interrupt + ask_user 도구 추가
